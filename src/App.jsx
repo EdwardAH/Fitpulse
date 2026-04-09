@@ -2,12 +2,12 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 
 // ── palette ──
 const C = {
-  bg: "#0d0f14", surface: "#181b22", card: "#1e222b", cardHover: "#252a35",
-  accent: "#00ddb3", accentDim: "rgba(0,221,179,0.12)", accentText: "#00ddb3",
-  text: "#f0f2f5", textSec: "#8b919e", textTer: "#555b67",
-  border: "#2a2f3a", danger: "#ff5c5c", warning: "#ffb547",
-  protein: "#5b8def", carbs: "#ffb547", fat: "#ff6b8a",
-  white: "#fff",
+  bg: "#f5f0ea", surface: "#ede8e0", card: "#e8e2d9", cardHover: "#dfd8ce",
+  accent: "#8db87a", accentDim: "rgba(141,184,122,0.18)", accentText: "#5a8c45",
+  text: "#3a3228", textSec: "#7a6e62", textTer: "#a89d91",
+  border: "#cdc5ba", danger: "#c0524a", warning: "#c98a2e",
+  protein: "#6b8fbe", carbs: "#c98a2e", fat: "#c0697a",
+  white: "#faf7f3",
 };
 
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -22,10 +22,10 @@ function save(key, v) { try { localStorage.setItem(key, JSON.stringify(v)); } ca
 // ── seed ──
 const SEED = {
   users: [
-    { id: "t1", name: "Coach Alex", email: "alex@fitpro.com", role: "trainer", pin: "1234" },
-    { id: "c1", name: "Sarah Chen", email: "sarah@mail.com", role: "client", trainerId: "t1", pin: "0000", age: 28, goal: "Build lean muscle", emoji: "💪" },
-    { id: "c2", name: "Marcus J.", email: "marcus@mail.com", role: "client", trainerId: "t1", pin: "0000", age: 34, goal: "Lose 20 lbs", emoji: "🔥" },
-    { id: "c3", name: "Priya Patel", email: "priya@mail.com", role: "client", trainerId: "t1", pin: "0000", age: 25, goal: "Marathon prep", emoji: "🏃‍♀️" },
+    { id: "t1", name: "Coach Alex", email: "alex@fitpro.com", role: "trainer", pin: "1234", status: "active" },
+    { id: "c1", name: "Sarah Chen", email: "sarah@mail.com", role: "client", trainerId: "t1", pin: "0000", age: 28, goal: "Build lean muscle", emoji: "💪", status: "active" },
+    { id: "c2", name: "Marcus J.", email: "marcus@mail.com", role: "client", trainerId: "t1", pin: "0000", age: 34, goal: "Lose 20 lbs", emoji: "🔥", status: "active" },
+    { id: "c3", name: "Priya Patel", email: "priya@mail.com", role: "client", trainerId: "t1", pin: "0000", age: 25, goal: "Marathon prep", emoji: "🏃‍♀️", status: "active" },
   ],
   programs: [
     { id: "p1", trainerId: "t1", name: "Hypertrophy A", desc: "Upper/lower split for growth", exercises: [
@@ -69,6 +69,12 @@ const SEED = {
     { id: "nt2", clientId: "c1", text: "Some shoulder tightness. Extra warm-up for OHP days.", at: "2026-04-04T09:30:00Z" },
     { id: "nt3", clientId: "c2", text: "Marcus down 4 lbs this month. Energy good. Keep current plan.", at: "2026-04-07T15:00:00Z" },
   ],
+  feedback: [
+    { id: "fb1", clientId: "c1", text: "Love the new program structure! The upper/lower split is working great for me.", rating: 5, at: "2026-04-07T09:00:00Z" },
+    { id: "fb2", clientId: "c2", text: "HIIT sessions are tough but I can already see results. Would love more variety in the cardio.", rating: 4, at: "2026-04-06T18:30:00Z" },
+    { id: "fb3", clientId: "c3", text: "Nutrition plan is really helping with my energy on long runs. Thanks!", rating: 5, at: "2026-04-05T08:00:00Z" },
+  ],
+  income: [],
 };
 
 // ── SVG icons (simple, bold) ──
@@ -88,6 +94,9 @@ const icons = {
   calendar: <><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></>,
   target: <><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></>,
   flame: <path d="M12 2c0 4-4 6-4 10a4 4 0 008 0c0-4-4-6-4-10z"/>,
+  bar: <><rect x="3" y="12" width="4" height="9" rx="1"/><rect x="10" y="7" width="4" height="14" rx="1"/><rect x="17" y="3" width="4" height="18" rx="1"/></>,
+  star: <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>,
+  dollar: <><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></>,
 };
 const Ic = ({ name, size = 22, color = "currentColor" }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{icons[name]}</svg>
@@ -158,13 +167,15 @@ export default function App() {
   const [sheet, setSheet] = useState(null);
   const [editProg, setEditProg] = useState(null);
   const [clientTab, setClientTab] = useState("workout");
+  const [confirmRemove, setConfirmRemove] = useState(null); // client object to remove
 
   useEffect(() => { const d = load("fp2", null); if (d) setData(d); setReady(true); }, []);
   useEffect(() => { if (ready) save("fp2", data); }, [data, ready]);
 
   const up = useCallback((fn) => setData(prev => { const n = { ...prev }; fn(n); return { ...n }; }), []);
   const isTrainer = user?.role === "trainer";
-  const clients = useMemo(() => data.users.filter(u => u.role === "client" && u.trainerId === (isTrainer ? user?.id : user?.trainerId)), [data.users, user, isTrainer]);
+  const clients = useMemo(() => data.users.filter(u => u.role === "client" && u.status === "active" && u.trainerId === (isTrainer ? user?.id : user?.trainerId)), [data.users, user, isTrainer]);
+  const pendingClients = useMemo(() => isTrainer ? data.users.filter(u => u.role === "client" && u.status === "pending" && u.trainerId === user?.id) : [], [data.users, user, isTrainer]);
 
   const getProg = (cid) => { const a = data.assignments.find(x => x.clientId === cid); return a ? data.programs.find(p => p.id === a.programId) : null; };
   const getSessions = (cid) => data.sessions.filter(x => x.clientId === cid).sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -176,7 +187,10 @@ export default function App() {
   const pop = () => setScreen(null);
 
   // ── CRUD ──
-  const addClient = (c) => up(d => { d.users = [...d.users, { ...c, id: uid(), role: "client", trainerId: user.id, pin: "0000" }]; });
+  const addClient = (c) => up(d => { d.users = [...d.users, { ...c, id: uid(), role: "client", trainerId: user.id, pin: "0000", status: "active" }]; });
+  const removeClient = (id) => up(d => { d.users = d.users.filter(u => u.id !== id); d.assignments = d.assignments.filter(a => a.clientId !== id); });
+  const approveClient = (id) => up(d => { d.users = d.users.map(u => u.id === id ? { ...u, status: "active" } : u); });
+  const rejectClient = (id) => up(d => { d.users = d.users.map(u => u.id === id ? { ...u, status: "rejected" } : u); });
   const addProgram = (p) => up(d => { d.programs = [...d.programs, { ...p, id: uid(), trainerId: user.id }]; });
   const updateProgram = (id, p) => up(d => { d.programs = d.programs.map(x => x.id === id ? { ...x, ...p } : x); });
   const assignProg = (cid, pid) => up(d => {
@@ -185,10 +199,13 @@ export default function App() {
     else { d.assignments = [...d.assignments.filter(a => a.clientId !== cid), { clientId: cid, programId: pid }]; }
   });
   const addSession = (se) => up(d => { d.sessions = [...d.sessions, { ...se, id: uid() }]; });
+  const delSession = (id) => up(d => { d.sessions = d.sessions.filter(x => x.id !== id); });
   const addNote = (n) => up(d => { d.notes = [...d.notes, { ...n, id: uid(), at: now() }]; });
   const delNote = (id) => up(d => { d.notes = d.notes.filter(x => x.id !== id); });
   const addNutrition = (n) => up(d => { const ex = d.nutrition.find(x => x.clientId === n.clientId); if (ex) d.nutrition = d.nutrition.map(x => x.id === ex.id ? { ...x, ...n } : x); else d.nutrition = [...d.nutrition, { ...n, id: uid() }]; });
   const addMeal = (ml) => up(d => { const ex = d.meals.find(m => m.clientId === ml.clientId && m.date === ml.date); if (ex) d.meals = d.meals.map(m => m.id === ex.id ? { ...m, items: [...m.items, ...ml.items] } : m); else d.meals = [...d.meals, { ...ml, id: uid() }]; });
+  const addFeedback = (fb) => up(d => { if (!d.feedback) d.feedback = []; d.feedback = [...d.feedback, { ...fb, id: uid(), at: now() }]; });
+  const setIncome = (trainerId, month, amount) => up(d => { if (!d.income) d.income = []; const ex = d.income.find(x => x.trainerId === trainerId && x.month === month); if (ex) d.income = d.income.map(x => x === ex ? { ...x, amount } : x); else d.income = [...d.income, { id: uid(), trainerId, month, amount }]; });
 
   // ═══════════════════════════
   // LOGIN
@@ -197,11 +214,65 @@ export default function App() {
 
   if (!user) {
     return <LoginScreen users={data.users} onLogin={u => { setUser(u); setTab("home"); }} onSignup={u => {
-      const newUser = { ...u, id: uid() };
+      const newUser = { ...u, id: uid(), status: "pending" };
       up(d => { d.users = [...d.users, newUser]; });
       setUser(newUser);
       setTab("home");
     }} />;
+  }
+
+  // ── Pending approval screen ──
+  if (user.status === "pending") {
+    // Pull latest status from data in case trainer approved mid-session
+    const liveUser = data.users.find(u => u.id === user.id);
+    if (liveUser?.status === "active") {
+      setUser(liveUser);
+    }
+    return (
+      <div style={{ ...s.full, flexDirection: "column", gap: 0, padding: "0 28px", textAlign: "center" }}>
+        <style>{`
+          @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap');
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          body { font-family: 'Outfit', sans-serif; background: ${C.bg}; }
+        `}</style>
+        <div style={{ fontSize: 48, marginBottom: 20 }}>⏳</div>
+        <div style={{ fontSize: 28, fontWeight: 800, color: C.text, fontFamily: "'Outfit',sans-serif", marginBottom: 10 }}>You're on the waitlist</div>
+        <div style={{ fontSize: 15, color: C.textSec, lineHeight: 1.6, marginBottom: 8 }}>
+          Your account is waiting for approval from your trainer. You'll get full access as soon as they confirm your spot.
+        </div>
+        <div style={{ display: "inline-block", background: C.accentDim, color: C.accentText, borderRadius: 20, padding: "6px 16px", fontSize: 13, fontWeight: 700, margin: "16px 0 32px" }}>
+          {user.name}
+        </div>
+        <button
+          onClick={() => { setUser(null); setTab("home"); }}
+          style={{ background: "none", border: `1.5px solid ${C.border}`, borderRadius: 12, padding: "12px 24px", fontSize: 14, color: C.textSec, cursor: "pointer", fontFamily: "'Outfit',sans-serif" }}>
+          Sign out
+        </button>
+      </div>
+    );
+  }
+
+  // ── Rejected screen ──
+  if (user.status === "rejected") {
+    return (
+      <div style={{ ...s.full, flexDirection: "column", gap: 0, padding: "0 28px", textAlign: "center" }}>
+        <style>{`
+          @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap');
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          body { font-family: 'Outfit', sans-serif; background: ${C.bg}; }
+        `}</style>
+        <div style={{ fontSize: 48, marginBottom: 20 }}>🚫</div>
+        <div style={{ fontSize: 26, fontWeight: 800, color: C.text, fontFamily: "'Outfit',sans-serif", marginBottom: 10 }}>Access not approved</div>
+        <div style={{ fontSize: 15, color: C.textSec, lineHeight: 1.6, marginBottom: 32 }}>
+          Your trainer was unable to accept your request at this time. Please reach out to them directly for more information.
+        </div>
+        <button
+          onClick={() => { setUser(null); setTab("home"); }}
+          style={{ background: "none", border: `1.5px solid ${C.border}`, borderRadius: 12, padding: "12px 24px", fontSize: 14, color: C.textSec, cursor: "pointer", fontFamily: "'Outfit',sans-serif" }}>
+          Back to sign in
+        </button>
+      </div>
+    );
   }
 
   const curClient = screen?.type === "client" ? screen.payload : (!isTrainer ? user : null);
@@ -232,6 +303,30 @@ export default function App() {
             </div>
           ))}
         </div>
+        {/* Pending approvals */}
+        {pendingClients.length > 0 && (
+          <div style={{ marginBottom: 24 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+              <span style={{ fontSize: 18, fontWeight: 700, color: C.text }}>Pending Approval</span>
+              <span style={{ background: C.danger, color: "#fff", borderRadius: 10, fontSize: 11, fontWeight: 800, padding: "2px 8px" }}>{pendingClients.length}</span>
+            </div>
+            {pendingClients.map(c => (
+              <div key={c.id} style={{ ...s.cardDark, marginBottom: 10, borderLeft: `3px solid ${C.warning}` }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div style={s.clientEmoji}>{c.emoji || "👤"}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>{c.name}</div>
+                    <div style={{ fontSize: 12, color: C.textSec, marginTop: 1 }}>{c.goal}{c.age ? ` · ${c.age}y` : ""}</div>
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={() => rejectClient(c.id)} style={{ background: "none", border: `1.5px solid ${C.danger}`, borderRadius: 10, padding: "6px 12px", fontSize: 12, fontWeight: 700, color: C.danger, cursor: "pointer" }}>Decline</button>
+                    <button onClick={() => approveClient(c.id)} style={{ background: C.accentText, border: "none", borderRadius: 10, padding: "6px 14px", fontSize: 12, fontWeight: 700, color: "#fff", cursor: "pointer" }}>Approve</button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
         {/* Client list */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
           <span style={{ fontSize: 18, fontWeight: 700, color: C.text }}>Clients</span>
@@ -247,11 +342,15 @@ export default function App() {
                 <div style={{ fontSize: 16, fontWeight: 700, color: C.text }}>{c.name}</div>
                 <div style={{ fontSize: 13, color: C.textSec, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.goal}</div>
               </div>
-              <div style={{ textAlign: "right" }}>
+              <div style={{ textAlign: "right", marginRight: 4 }}>
                 <div style={{ fontSize: 11, color: prog ? C.accent : C.textTer, fontWeight: 600, textTransform: "uppercase" }}>{prog ? prog.name : "No plan"}</div>
                 <div style={{ fontSize: 12, color: C.textSec }}>{sessCount} sessions</div>
               </div>
-              <Ic name="back" size={16} color={C.textTer} style={{ transform: "rotate(180deg)" }} />
+              <button
+                onClick={e => { e.stopPropagation(); setConfirmRemove(c); }}
+                style={{ background: "none", border: "none", cursor: "pointer", padding: 6, borderRadius: 8, flexShrink: 0 }}>
+                <Ic name="trash" size={17} color={C.danger} />
+              </button>
             </div>
           );
         })}
@@ -391,10 +490,10 @@ export default function App() {
         </div>
 
         {/* Tabs */}
-        <div style={s.tabs}>
-          {["workout", "nutrition", "notes"].map(t => (
-            <button key={t} style={{ ...s.tab, ...(clientTab === t ? s.tabActive : {}) }} onClick={() => setClientTab(t)}>
-              {t === "workout" ? "💪 Workout" : t === "nutrition" ? "🍎 Nutrition" : "📝 Notes"}
+        <div style={{ ...s.tabs, overflowX: "auto" }}>
+          {["workout", "weekly", "nutrition", "notes"].map(t => (
+            <button key={t} style={{ ...s.tab, ...(clientTab === t ? s.tabActive : {}), whiteSpace: "nowrap" }} onClick={() => setClientTab(t)}>
+              {t === "workout" ? "💪 Workout" : t === "weekly" ? "📅 Weekly" : t === "nutrition" ? "🍎 Nutrition" : "📝 Notes"}
             </button>
           ))}
         </div>
@@ -499,6 +598,125 @@ export default function App() {
             })}
           </div>
         )}
+
+        {/* WEEKLY PLAN */}
+        {clientTab === "weekly" && (() => {
+          const today = new Date();
+          const dow = today.getDay();
+          const monday = new Date(today);
+          monday.setDate(today.getDate() - (dow === 0 ? 6 : dow - 1));
+          monday.setHours(0, 0, 0, 0);
+          const sunday = new Date(monday);
+          sunday.setDate(monday.getDate() + 6);
+          sunday.setHours(23, 59, 59, 999);
+          const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+          const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(monday); d.setDate(monday.getDate() + i); return d; });
+          const sessionsThisWeek = sessions.filter(se => { const seDate = new Date(se.date); return seDate >= monday && seDate <= sunday; });
+          const weekMeals = mealLogs.filter(ml => new Date(ml.date + "T00:00:00") >= monday);
+          const weekTotals = weekMeals.reduce((acc, ml) => {
+            const t = ml.items.reduce((a, item) => ({ cal: a.cal + item.cal, protein: a.protein + item.protein, carbs: a.carbs + item.carbs, fat: a.fat + item.fat }), { cal: 0, protein: 0, carbs: 0, fat: 0 });
+            return { cal: acc.cal + t.cal, protein: acc.protein + t.protein, carbs: acc.carbs + t.carbs, fat: acc.fat + t.fat };
+          }, { cal: 0, protein: 0, carbs: 0, fat: 0 });
+
+          return (
+            <div>
+              {/* Week strip */}
+              <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 12 }}>This Week</div>
+              <div style={{ display: "flex", gap: 6, marginBottom: 20 }}>
+                {days.map((d, i) => {
+                  const dateStr = d.toISOString().slice(0, 10);
+                  const todayStr = today.toISOString().slice(0, 10);
+                  const hasSession = sessionsThisWeek.some(se => se.date.slice(0, 10) === dateStr);
+                  const isToday = dateStr === todayStr;
+                  return (
+                    <div key={i} style={{ flex: 1, textAlign: "center", padding: "10px 4px", borderRadius: 12,
+                      background: hasSession ? C.accentDim : isToday ? C.surface : "transparent",
+                      border: `1.5px solid ${isToday ? C.accent : hasSession ? C.accent : C.border}` }}>
+                      <div style={{ fontSize: 9, color: C.textSec, marginBottom: 4, textTransform: "uppercase" }}>{dayNames[i]}</div>
+                      <div style={{ fontSize: 13, fontWeight: isToday ? 800 : 600, color: isToday ? C.accentText : C.text }}>{d.getDate()}</div>
+                      {hasSession && <div style={{ width: 5, height: 5, borderRadius: "50%", background: C.accentText, margin: "4px auto 0" }} />}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Assigned program */}
+              <div style={{ ...s.cardDark, marginBottom: 16 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.textSec, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Assigned Program</div>
+                {prog ? (
+                  <>
+                    <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 2 }}>{prog.name}</div>
+                    <div style={{ fontSize: 13, color: C.textSec, marginBottom: 12 }}>{prog.desc}</div>
+                    {prog.exercises.map(ex => (
+                      <div key={ex.id} style={s.exRow}>
+                        <span style={{ fontWeight: 600, color: C.text, flex: 1 }}>{ex.name}</span>
+                        <span style={{ color: C.accentText, fontWeight: 700, fontSize: 13 }}>{ex.sets}×{ex.reps} {ex.weight > 0 ? `@ ${ex.weight}lb` : "BW"}</span>
+                      </div>
+                    ))}
+                  </>
+                ) : <div style={{ color: C.textTer, textAlign: "center", padding: 16 }}>No program assigned yet</div>}
+              </div>
+
+              {/* Sessions logged this week */}
+              {sessionsThisWeek.length > 0 && (
+                <>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 10 }}>Logged This Week</div>
+                  {sessionsThisWeek.map(se => {
+                    const p = data.programs.find(x => x.id === se.programId);
+                    return (
+                      <div key={se.id} style={{ ...s.cardDark, marginBottom: 10 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                          <span style={{ fontWeight: 700, color: C.text, fontSize: 14 }}>{p?.name || "Session"}</span>
+                          <span style={{ fontSize: 12, color: C.textTer }}>{fmtDate(se.date)}</span>
+                        </div>
+                        {se.logs.map((log, li) => {
+                          const ex = p?.exercises.find(e => e.id === log.exerciseId);
+                          return (
+                            <div key={li} style={{ marginBottom: 4 }}>
+                              <span style={{ fontSize: 13, color: C.textSec }}>{ex?.name}: </span>
+                              {log.sets.map((st, si) => <span key={si} style={s.setChip}>{st.reps}×{st.weight}lb</span>)}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </>
+              )}
+
+              {/* Weekly macro goals */}
+              {nutr ? (
+                <>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: C.text, marginTop: 4, marginBottom: 12 }}>Weekly Macro Goals</div>
+                  <div style={{ ...s.cardDark, marginBottom: 16 }}>
+                    <div style={{ fontSize: 12, color: C.textSec, marginBottom: 14 }}>Daily targets × 7 — progress from meals logged this week</div>
+                    {[
+                      { label: "Calories", goal: nutr.cal * 7, logged: weekTotals.cal, color: C.accent, unit: " cal" },
+                      { label: "Protein", goal: nutr.protein * 7, logged: weekTotals.protein, color: C.protein, unit: "g" },
+                      { label: "Carbs", goal: nutr.carbs * 7, logged: weekTotals.carbs, color: C.carbs, unit: "g" },
+                      { label: "Fat", goal: nutr.fat * 7, logged: weekTotals.fat, color: C.fat, unit: "g" },
+                    ].map(m => {
+                      const pct = m.goal > 0 ? Math.min(1, m.logged / m.goal) : 0;
+                      return (
+                        <div key={m.label} style={{ marginBottom: 14 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                            <span style={{ fontWeight: 600, color: C.text, fontSize: 14 }}>{m.label}</span>
+                            <span style={{ fontSize: 12, color: m.color, fontWeight: 700 }}>{m.logged} / {m.goal}{m.unit}</span>
+                          </div>
+                          <div style={{ height: 8, borderRadius: 4, background: C.border, overflow: "hidden" }}>
+                            <div style={{ height: "100%", borderRadius: 4, width: `${pct * 100}%`, background: m.color, transition: "width 0.4s ease" }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              ) : (
+                <div style={{ ...s.cardDark, textAlign: "center", color: C.textTer, padding: 24 }}>No nutrition plan set yet</div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* NOTES */}
         {clientTab === "notes" && (
@@ -620,6 +838,26 @@ export default function App() {
     );
   };
 
+  const FeedbackSheet = () => {
+    const [text, setText] = useState("");
+    const [rating, setRating] = useState(5);
+    return (
+      <Sheet open title="Leave Feedback" onClose={() => setSheet(null)}>
+        <div style={{ marginBottom: 14 }}>
+          <label style={s.label}>Rating</label>
+          <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+            {[1, 2, 3, 4, 5].map(n => (
+              <button key={n} onClick={() => setRating(n)}
+                style={{ background: "none", border: "none", cursor: "pointer", fontSize: 28, opacity: n <= rating ? 1 : 0.25, padding: 2 }}>★</button>
+            ))}
+          </div>
+        </div>
+        <Textarea label="Your feedback" value={text} onChange={e => setText(e.target.value)} placeholder="How's your training going? Any suggestions?" />
+        <Btn full onClick={() => { if (text) { addFeedback({ clientId: user.id, text, rating }); setSheet(null); } }}>Submit Feedback</Btn>
+      </Sheet>
+    );
+  };
+
   const MealSheet = () => {
     const [name, setName] = useState(""); const [cal, setCal] = useState(""); const [pro, setPro] = useState(""); const [carbs, setCarbs] = useState(""); const [fat, setFat] = useState("");
     return (
@@ -642,10 +880,12 @@ export default function App() {
   const trainerTabs = [
     { id: "home", label: "Clients", icon: "users" },
     { id: "programs", label: "Programs", icon: "dumbbell" },
+    { id: "business", label: "Business", icon: "bar" },
     { id: "account", label: "Account", icon: "target" },
   ];
   const clientTabs = [
     { id: "home", label: "Home", icon: "home" },
+    { id: "weekly", label: "Weekly", icon: "dumbbell" },
     { id: "history", label: "History", icon: "calendar" },
     { id: "account", label: "Account", icon: "target" },
   ];
@@ -659,7 +899,12 @@ export default function App() {
         <div style={{ fontSize: 22, fontWeight: 800, color: C.text, fontFamily: "'Outfit',sans-serif" }}>{user.name}</div>
         <div style={{ fontSize: 14, color: C.textSec, marginTop: 2 }}>{user.email}</div>
         <div style={{ ...s.badge, marginTop: 8 }}>{user.role}</div>
-        <Btn variant="danger" style={{ marginTop: 32 }} onClick={() => { setUser(null); setScreen(null); setTab("home"); }}><Ic name="logout" size={18} color="#fff" /> Sign Out</Btn>
+        {!isTrainer && (
+          <Btn variant="outline" style={{ marginTop: 24 }} onClick={() => setSheet("feedback")}>
+            <Ic name="star" size={16} color={C.text} /> Leave Feedback
+          </Btn>
+        )}
+        <Btn variant="danger" style={{ marginTop: 12 }} onClick={() => { setUser(null); setScreen(null); setTab("home"); }}><Ic name="logout" size={18} color="#fff" /> Sign Out</Btn>
       </div>
     </div>
   );
@@ -691,6 +936,312 @@ export default function App() {
             </div>
           );
         })}
+      </div>
+    );
+  };
+
+  // ── Trainer Business Tab ──
+  const BusinessTab = () => {
+    const today = new Date();
+    const dow = today.getDay();
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - (dow === 0 ? 6 : dow - 1));
+    monday.setHours(0, 0, 0, 0);
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    sunday.setHours(23, 59, 59, 999);
+    const monthKey = today.toISOString().slice(0, 7);
+
+    const [incomeVal, setIncomeVal] = useState(() => {
+      const inc = (data.income || []).find(x => x.trainerId === user.id && x.month === monthKey);
+      return inc ? String(inc.amount) : "";
+    });
+
+    const clientStats = clients.map(c => {
+      const nutr = getNutrition(c.id);
+      const sessions = getSessions(c.id);
+      const mealLogs = getMeals(c.id);
+      const sessionsThisWeek = sessions.filter(se => { const d = new Date(se.date); return d >= monday && d <= sunday; });
+      const weekMeals = mealLogs.filter(ml => new Date(ml.date + "T00:00:00") >= monday);
+      const weekCal = weekMeals.reduce((acc, ml) => acc + ml.items.reduce((a, it) => a + it.cal, 0), 0);
+      const macroGoal = nutr ? nutr.cal * 7 : 0;
+      const macroMet = macroGoal > 0 ? Math.min(1, weekCal / macroGoal) : 0;
+      const workoutMet = Math.min(1, sessionsThisWeek.length / 3);
+      return { client: c, sessionsThisWeek: sessionsThisWeek.length, macroMet, workoutMet, hasMacro: !!nutr };
+    });
+
+    const totalSessionsWeek = clientStats.reduce((a, cs) => a + cs.sessionsThisWeek, 0);
+    const recentFeedback = (data.feedback || [])
+      .filter(f => clients.some(c => c.id === f.clientId))
+      .sort((a, b) => new Date(b.at) - new Date(a.at))
+      .slice(0, 6);
+
+    const chartH = 140;
+    const barW = 22;
+    const groupW = barW * 2 + 8;
+    const gapW = 18;
+    const chartW = Math.max(clients.length * (groupW + gapW) + gapW, 280);
+
+    return (
+      <div style={s.page}>
+        <div style={{ fontSize: 26, fontWeight: 800, color: C.text, fontFamily: "'Outfit',sans-serif", marginBottom: 20 }}>Business</div>
+
+        {/* Stat pills */}
+        <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
+          {[
+            { val: clients.length, label: "Clients", color: C.accent },
+            { val: totalSessionsWeek, label: "Sessions / wk", color: C.protein },
+            { val: data.programs.filter(p => p.trainerId === user.id).length, label: "Programs", color: C.warning },
+          ].map((item, i) => (
+            <div key={i} style={{ ...s.statPill, flex: 1, minWidth: 80 }}>
+              <div style={{ fontSize: 26, fontWeight: 800, fontFamily: "'Outfit',sans-serif", color: item.color }}>{item.val}</div>
+              <div style={{ fontSize: 10, color: C.textSec, textTransform: "uppercase", letterSpacing: 0.8, marginTop: 2 }}>{item.label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Revenue input */}
+        <div style={{ ...s.cardDark, marginBottom: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: C.textSec, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 }}>Monthly Revenue</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Ic name="dollar" size={20} color={C.accentText} />
+            <input
+              style={{ ...s.input, marginBottom: 0, fontSize: 24, fontWeight: 800, flex: 1, color: C.text, background: "transparent", border: "none", padding: "4px 0" }}
+              type="number"
+              placeholder="0"
+              value={incomeVal}
+              onChange={e => {
+                setIncomeVal(e.target.value);
+                setIncome(user.id, monthKey, Number(e.target.value) || 0);
+              }}
+            />
+            <span style={{ fontSize: 13, color: C.textSec, whiteSpace: "nowrap" }}>/ mo</span>
+          </div>
+          <div style={{ height: 1, background: C.border, margin: "10px 0" }} />
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <span style={{ fontSize: 12, color: C.textSec }}>Per client avg</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>
+              {clients.length > 0 && incomeVal ? `$${Math.round(Number(incomeVal) / clients.length)}` : "—"}
+            </span>
+          </div>
+        </div>
+
+        {/* Compliance bar chart */}
+        <div style={{ ...s.cardDark, marginBottom: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: C.textSec, textTransform: "uppercase", letterSpacing: 1, marginBottom: 14 }}>Weekly Compliance</div>
+          {clients.length === 0 ? (
+            <div style={{ textAlign: "center", color: C.textTer, padding: 24 }}>No clients yet</div>
+          ) : (
+            <>
+              <div style={{ display: "flex", gap: 16, marginBottom: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <div style={{ width: 10, height: 10, borderRadius: 2, background: C.accent }} />
+                  <span style={{ fontSize: 11, color: C.textSec }}>Macros</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <div style={{ width: 10, height: 10, borderRadius: 2, background: C.protein }} />
+                  <span style={{ fontSize: 11, color: C.textSec }}>Workouts (of 3/wk)</span>
+                </div>
+              </div>
+              <div style={{ overflowX: "auto" }}>
+                <svg width={chartW} height={chartH + 44} style={{ display: "block" }}>
+                  {/* Gridlines at 25%, 50%, 75%, 100% */}
+                  {[0.25, 0.5, 0.75, 1].map(pct => {
+                    const y = chartH - pct * chartH;
+                    return (
+                      <g key={pct}>
+                        <line x1={0} y1={y} x2={chartW} y2={y} stroke={C.border} strokeWidth={1} strokeDasharray="3 3" />
+                        <text x={chartW - 2} y={y - 3} textAnchor="end" fontSize="8" fill={C.textTer}>{Math.round(pct * 100)}%</text>
+                      </g>
+                    );
+                  })}
+                  {clientStats.map((cs, i) => {
+                    const x = gapW / 2 + i * (groupW + gapW);
+                    const macroH = cs.hasMacro ? Math.max(4, cs.macroMet * chartH) : 4;
+                    const workH = Math.max(4, cs.workoutMet * chartH);
+                    const firstName = cs.client.name.split(" ")[0];
+                    return (
+                      <g key={cs.client.id}>
+                        {/* Macro bar */}
+                        <rect x={x} y={chartH - macroH} width={barW} height={macroH} rx={5}
+                          fill={cs.hasMacro ? C.accent : C.border} opacity={cs.hasMacro ? 1 : 0.35} />
+                        {cs.hasMacro && macroH > 18 && (
+                          <text x={x + barW / 2} y={chartH - macroH + 13} textAnchor="middle" fontSize="9" fill={C.white} fontWeight="700">
+                            {Math.round(cs.macroMet * 100)}%
+                          </text>
+                        )}
+                        {/* Workout bar */}
+                        <rect x={x + barW + 8} y={chartH - workH} width={barW} height={workH} rx={5} fill={C.protein} />
+                        {workH > 18 && (
+                          <text x={x + barW + 8 + barW / 2} y={chartH - workH + 13} textAnchor="middle" fontSize="9" fill={C.white} fontWeight="700">
+                            {cs.sessionsThisWeek}
+                          </text>
+                        )}
+                        {/* Client emoji */}
+                        <text x={x + barW + 4} y={chartH + 16} textAnchor="middle" fontSize="13">{cs.client.emoji || "👤"}</text>
+                        {/* Client name */}
+                        <text x={x + barW + 4} y={chartH + 32} textAnchor="middle" fontSize="9" fill={C.textSec}>{firstName}</text>
+                      </g>
+                    );
+                  })}
+                  <line x1={0} y1={chartH} x2={chartW} y2={chartH} stroke={C.border} strokeWidth={1.5} />
+                </svg>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Client feedback */}
+        <div style={{ fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 12 }}>Client Feedback</div>
+        {recentFeedback.length === 0 ? (
+          <div style={{ ...s.cardDark, textAlign: "center", color: C.textTer, padding: 28 }}>No feedback submitted yet</div>
+        ) : (
+          recentFeedback.map(fb => {
+            const client = clients.find(c => c.id === fb.clientId);
+            return (
+              <div key={fb.id} style={{ ...s.cardDark, marginBottom: 10, borderLeft: `3px solid ${C.protein}` }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 18 }}>{client?.emoji || "👤"}</span>
+                    <span style={{ fontWeight: 700, color: C.text, fontSize: 14 }}>{client?.name || "Client"}</span>
+                  </div>
+                  <div style={{ display: "flex", gap: 1 }}>
+                    {Array.from({ length: 5 }, (_, i) => (
+                      <span key={i} style={{ fontSize: 13, color: i < fb.rating ? C.warning : C.border }}>★</span>
+                    ))}
+                  </div>
+                </div>
+                <div style={{ fontSize: 13, color: C.textSec, lineHeight: 1.55 }}>{fb.text}</div>
+                <div style={{ fontSize: 11, color: C.textTer, marginTop: 6 }}>{fmtFull(fb.at)}</div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    );
+  };
+
+  // Client weekly plan tab
+  const WeeklyTab = () => {
+    const prog = getProg(user.id);
+    const nutr = getNutrition(user.id);
+    const sessions = getSessions(user.id);
+    const mealLogs = getMeals(user.id);
+
+    const today = new Date();
+    const dow = today.getDay();
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - (dow === 0 ? 6 : dow - 1));
+    monday.setHours(0, 0, 0, 0);
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    sunday.setHours(23, 59, 59, 999);
+    const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(monday); d.setDate(monday.getDate() + i); return d; });
+    const sessionsThisWeek = sessions.filter(se => { const seDate = new Date(se.date); return seDate >= monday && seDate <= sunday; });
+    const weekMeals = mealLogs.filter(ml => new Date(ml.date + "T00:00:00") >= monday);
+    const weekTotals = weekMeals.reduce((acc, ml) => {
+      const t = ml.items.reduce((a, item) => ({ cal: a.cal + item.cal, protein: a.protein + item.protein, carbs: a.carbs + item.carbs, fat: a.fat + item.fat }), { cal: 0, protein: 0, carbs: 0, fat: 0 });
+      return { cal: acc.cal + t.cal, protein: acc.protein + t.protein, carbs: acc.carbs + t.carbs, fat: acc.fat + t.fat };
+    }, { cal: 0, protein: 0, carbs: 0, fat: 0 });
+
+    return (
+      <div style={s.page}>
+        <div style={{ fontSize: 26, fontWeight: 800, color: C.text, fontFamily: "'Outfit',sans-serif", marginBottom: 20 }}>Weekly Plan</div>
+
+        {/* Week strip */}
+        <div style={{ display: "flex", gap: 6, marginBottom: 20 }}>
+          {days.map((d, i) => {
+            const dateStr = d.toISOString().slice(0, 10);
+            const todayStr = today.toISOString().slice(0, 10);
+            const hasSession = sessionsThisWeek.some(se => se.date.slice(0, 10) === dateStr);
+            const isToday = dateStr === todayStr;
+            return (
+              <div key={i} style={{ flex: 1, textAlign: "center", padding: "10px 4px", borderRadius: 12,
+                background: hasSession ? C.accentDim : isToday ? C.surface : "transparent",
+                border: `1.5px solid ${isToday ? C.accent : hasSession ? C.accent : C.border}` }}>
+                <div style={{ fontSize: 9, color: C.textSec, marginBottom: 4, textTransform: "uppercase" }}>{dayNames[i]}</div>
+                <div style={{ fontSize: 13, fontWeight: isToday ? 800 : 600, color: isToday ? C.accentText : C.text }}>{d.getDate()}</div>
+                {hasSession && <div style={{ width: 5, height: 5, borderRadius: "50%", background: C.accentText, margin: "4px auto 0" }} />}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Assigned program */}
+        <div style={{ ...s.cardDark, marginBottom: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: C.textSec, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Your Program</div>
+          {prog ? (
+            <>
+              <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 2 }}>{prog.name}</div>
+              <div style={{ fontSize: 13, color: C.textSec, marginBottom: 12 }}>{prog.desc}</div>
+              {prog.exercises.map(ex => (
+                <div key={ex.id} style={s.exRow}>
+                  <span style={{ fontWeight: 600, color: C.text, flex: 1 }}>{ex.name}</span>
+                  <span style={{ color: C.accentText, fontWeight: 700, fontSize: 13 }}>{ex.sets}×{ex.reps} {ex.weight > 0 ? `@ ${ex.weight}lb` : "BW"}</span>
+                </div>
+              ))}
+            </>
+          ) : <div style={{ color: C.textTer, textAlign: "center", padding: 16 }}>No program assigned yet</div>}
+        </div>
+
+        {/* Sessions logged this week */}
+        {sessionsThisWeek.length > 0 && (
+          <>
+            <div style={{ fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 10 }}>Logged This Week</div>
+            {sessionsThisWeek.map(se => {
+              const p = data.programs.find(x => x.id === se.programId);
+              return (
+                <div key={se.id} style={{ ...s.cardDark, marginBottom: 10 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                    <span style={{ fontWeight: 700, color: C.text, fontSize: 14 }}>{p?.name || "Session"}</span>
+                    <span style={{ fontSize: 12, color: C.textTer }}>{fmtDate(se.date)}</span>
+                  </div>
+                  {se.logs.map((log, li) => {
+                    const ex = p?.exercises.find(e => e.id === log.exerciseId);
+                    return (
+                      <div key={li} style={{ marginBottom: 4 }}>
+                        <span style={{ fontSize: 13, color: C.textSec }}>{ex?.name}: </span>
+                        {log.sets.map((st, si) => <span key={si} style={s.setChip}>{st.reps}×{st.weight}lb</span>)}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </>
+        )}
+
+        {/* Weekly macro goals */}
+        {nutr ? (
+          <>
+            <div style={{ fontSize: 15, fontWeight: 700, color: C.text, marginTop: 4, marginBottom: 12 }}>Weekly Macro Goals</div>
+            <div style={{ ...s.cardDark, marginBottom: 16 }}>
+              <div style={{ fontSize: 12, color: C.textSec, marginBottom: 14 }}>Daily targets × 7 — progress from meals logged this week</div>
+              {[
+                { label: "Calories", goal: nutr.cal * 7, logged: weekTotals.cal, color: C.accent, unit: " cal" },
+                { label: "Protein", goal: nutr.protein * 7, logged: weekTotals.protein, color: C.protein, unit: "g" },
+                { label: "Carbs", goal: nutr.carbs * 7, logged: weekTotals.carbs, color: C.carbs, unit: "g" },
+                { label: "Fat", goal: nutr.fat * 7, logged: weekTotals.fat, color: C.fat, unit: "g" },
+              ].map(m => {
+                const pct = m.goal > 0 ? Math.min(1, m.logged / m.goal) : 0;
+                return (
+                  <div key={m.label} style={{ marginBottom: 14 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                      <span style={{ fontWeight: 600, color: C.text, fontSize: 14 }}>{m.label}</span>
+                      <span style={{ fontSize: 12, color: m.color, fontWeight: 700 }}>{m.logged} / {m.goal}{m.unit}</span>
+                    </div>
+                    <div style={{ height: 8, borderRadius: 4, background: C.border, overflow: "hidden" }}>
+                      <div style={{ height: "100%", borderRadius: 4, width: `${pct * 100}%`, background: m.color, transition: "width 0.4s ease" }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        ) : (
+          <div style={{ ...s.cardDark, textAlign: "center", color: C.textTer, padding: 24 }}>No nutrition plan set yet</div>
+        )}
       </div>
     );
   };
@@ -743,6 +1294,8 @@ export default function App() {
     );
   } else if (tab === "home") content = isTrainer ? <HomeTrainer /> : <HomeClient />;
   else if (tab === "programs") content = <ProgramsTab />;
+  else if (tab === "business") content = <BusinessTab />;
+  else if (tab === "weekly") content = <WeeklyTab />;
   else if (tab === "history") content = <HistoryTab />;
   else if (tab === "account") content = <AccountTab />;
 
@@ -777,6 +1330,36 @@ export default function App() {
       {sheet === "add-note" && <NoteSheet />}
       {sheet === "nutrition" && <NutritionSheet />}
       {sheet === "log-meal" && <MealSheet />}
+      {sheet === "feedback" && <FeedbackSheet />}
+
+      {/* Remove client confirmation modal */}
+      {confirmRemove && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 24 }}
+          onClick={() => setConfirmRemove(null)}>
+          <div style={{ background: C.card, borderRadius: 20, padding: 28, width: "100%", maxWidth: 340, border: `1px solid ${C.border}` }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 36, textAlign: "center", marginBottom: 14 }}>⚠️</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: C.text, textAlign: "center", marginBottom: 8, fontFamily: "'Outfit',sans-serif" }}>
+              Remove Client?
+            </div>
+            <div style={{ fontSize: 14, color: C.textSec, textAlign: "center", lineHeight: 1.6, marginBottom: 24 }}>
+              <strong style={{ color: C.text }}>{confirmRemove.name}</strong> will be removed from your client list. Their session history and data will no longer be accessible.
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                onClick={() => setConfirmRemove(null)}
+                style={{ flex: 1, padding: "13px 0", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: "pointer", background: "transparent", border: `1.5px solid ${C.border}`, color: C.text, fontFamily: "'Outfit',sans-serif" }}>
+                Cancel
+              </button>
+              <button
+                onClick={() => { removeClient(confirmRemove.id); setConfirmRemove(null); }}
+                style={{ flex: 1, padding: "13px 0", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: "pointer", background: C.danger, border: "none", color: "#fff", fontFamily: "'Outfit',sans-serif" }}>
+                Remove
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
@@ -784,36 +1367,102 @@ export default function App() {
 // ═══════════════════════════
 // LOGIN
 // ═══════════════════════════
+// ── Validated field (must be module-level so React never remounts it on parent re-render) ──
+function VField({ label, fieldKey, type = "text", placeholder, value, onChange, onBlur, onKeyDown, touched, error }) {
+  const invalid = touched && error;
+  const valid = touched && !error;
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: C.textSec, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}>{label}</label>
+      <input
+        type={type}
+        placeholder={placeholder}
+        value={value}
+        onChange={onChange}
+        onBlur={onBlur}
+        onKeyDown={onKeyDown}
+        style={{
+          width: "100%", padding: "12px 14px", borderRadius: 12, fontSize: 15, fontFamily: "'Outfit',sans-serif",
+          background: C.surface, color: C.text, outline: "none",
+          border: `1.5px solid ${invalid ? C.danger : valid ? C.accent : C.border}`,
+          transition: "border-color 0.15s",
+        }}
+      />
+      {invalid && <div style={{ color: C.danger, fontSize: 12, marginTop: 5, fontWeight: 500 }}>{error}</div>}
+    </div>
+  );
+}
+
+// ── Validation helpers ──
+const validateName = v => {
+  const parts = v.trim().split(/\s+/);
+  if (!v.trim()) return "Full name is required";
+  if (parts.length < 2 || parts[1].length < 1) return "Please enter a first and last name";
+  return "";
+};
+const validateEmail = v => {
+  if (!v.trim()) return "Email is required";
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v.trim())) return "Enter a valid email (e.g. name@domain.com)";
+  return "";
+};
+const validatePassword = (v, forSignup) => {
+  if (!v) return "Password is required";
+  if (!forSignup) return "";
+  if (v.length < 5) return "Password must be at least 5 characters";
+  if (!/[a-zA-Z]/.test(v)) return "Password must include letters";
+  if (!/[0-9]/.test(v)) return "Password must include a number";
+  if (!/[^a-zA-Z0-9]/.test(v)) return "Password must include a special character (e.g. !@#$)";
+  return "";
+};
+const validateAge = v => {
+  if (!v && v !== 0) return "Age is required";
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < 10 || n > 99) return "Age must be a 2-digit number (10–99)";
+  return "";
+};
+
 function LoginScreen({ users, onLogin, onSignup }) {
-  const [mode, setMode] = useState("login"); // "login" | "signup"
-  const [email, setEmail] = useState("");
-  const [pin, setPin] = useState("");
-  const [name, setName] = useState("");
-  const [goal, setGoal] = useState("");
-  const [age, setAge] = useState("");
-  const [coachCode, setCoachCode] = useState("");
-  const [err, setErr] = useState("");
+  const [mode, setMode] = useState("login");
+  const [fields, setFields] = useState({ name: "", email: "", pin: "", goal: "", age: "", coachCode: "" });
+  const [touched, setTouched] = useState({});
+  const [submitErr, setSubmitErr] = useState("");
+
+  const set = (k, v) => setFields(f => ({ ...f, [k]: v }));
+  const touch = (k) => setTouched(t => ({ ...t, [k]: true }));
+  const touchAll = (keys) => setTouched(t => { const n = { ...t }; keys.forEach(k => { n[k] = true; }); return n; });
+
+  const errs = {
+    name: validateName(fields.name),
+    email: validateEmail(fields.email),
+    pin: validatePassword(fields.pin, mode === "signup"),
+    age: validateAge(fields.age),
+  };
 
   const goLogin = () => {
-    const u = users.find(u => u.email === email && u.pin === pin);
+    setSubmitErr("");
+    const u = users.find(u => u.email === fields.email && u.pin === fields.pin);
     if (u) onLogin(u);
-    else setErr("Invalid credentials");
+    else setSubmitErr("Invalid email or password");
   };
 
   const goSignup = () => {
-    if (!name || !email || !pin) { setErr("Name, email, and password are required"); return; }
-    if (pin.length < 4) { setErr("Password must be at least 4 characters"); return; }
-    if (users.find(u => u.email === email)) { setErr("Email already registered"); return; }
-    const trainer = users.find(u => u.role === "trainer" && (u.id === coachCode || u.email === coachCode || !coachCode));
-    if (!trainer) { setErr("Coach not found. Leave blank to join default coach."); return; }
-    const initials = name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+    touchAll(["name", "email", "pin", "age"]);
+    setSubmitErr("");
+    if (errs.name || errs.email || errs.pin || errs.age) return;
+    if (users.find(u => u.email === fields.email)) { setSubmitErr("Email already registered"); return; }
+    const trainer = users.find(u => u.role === "trainer" && (u.id === fields.coachCode || u.email === fields.coachCode || !fields.coachCode));
+    if (!trainer) { setSubmitErr("Coach not found — leave blank for default coach"); return; }
     const emojis = ["💪", "🔥", "⚡", "🏃‍♀️", "🎯", "💥", "🦾", "🏋️"];
     onSignup({
-      name, email, pin, role: "client", trainerId: trainer.id,
-      age: Number(age) || null, goal: goal || "Get fit",
+      name: fields.name.trim(), email: fields.email.trim(), pin: fields.pin,
+      role: "client", trainerId: trainer.id,
+      age: Number(fields.age), goal: fields.goal || "Get fit",
       emoji: emojis[Math.floor(Math.random() * emojis.length)],
     });
   };
+
+  const resetMode = (m) => { setMode(m); setTouched({}); setSubmitErr(""); setFields({ name: "", email: "", pin: "", goal: "", age: "", coachCode: "" }); };
+  const plainInput = { width: "100%", padding: "12px 14px", borderRadius: 12, fontSize: 15, fontFamily: "'Outfit',sans-serif", background: C.surface, color: C.text, outline: "none", border: `1.5px solid ${C.border}` };
 
   return (
     <div style={s.full}>
@@ -827,25 +1476,41 @@ function LoginScreen({ users, onLogin, onSignup }) {
 
         {/* Toggle */}
         <div style={{ display: "flex", background: C.surface, borderRadius: 14, padding: 4, marginBottom: 24 }}>
-          <button onClick={() => { setMode("login"); setErr(""); }} style={{ ...togStyle, ...(mode === "login" ? togActive : {}) }}>Sign In</button>
-          <button onClick={() => { setMode("signup"); setErr(""); }} style={{ ...togStyle, ...(mode === "signup" ? togActive : {}) }}>Sign Up</button>
+          <button onClick={() => resetMode("login")} style={{ ...togStyle, ...(mode === "login" ? togActive : {}) }}>Sign In</button>
+          <button onClick={() => resetMode("signup")} style={{ ...togStyle, ...(mode === "signup" ? togActive : {}) }}>Sign Up</button>
         </div>
 
         {mode === "signup" && (
-          <Input label="Full Name" value={name} onChange={e => setName(e.target.value)} placeholder="Sarah Chen" />
+          <VField label="Full Name" placeholder="Sarah Chen"
+            value={fields.name} onChange={e => set("name", e.target.value)}
+            onBlur={() => touch("name")} touched={touched.name} error={errs.name} />
         )}
-        <Input label="Email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@email.com" />
-        <Input label="Password" type="password" value={pin} onChange={e => setPin(e.target.value)} placeholder={mode === "signup" ? "Create a password" : "Enter password"} onKeyDown={e => e.key === "Enter" && (mode === "login" ? goLogin() : goSignup())} />
+        <VField label="Email" placeholder="you@email.com"
+          value={fields.email} onChange={e => set("email", e.target.value)}
+          onBlur={() => touch("email")} touched={touched.email} error={errs.email} />
+        <VField label="Password" type="password"
+          placeholder={mode === "signup" ? "Min 5 chars, letter + number + symbol" : "Enter password"}
+          value={fields.pin} onChange={e => set("pin", e.target.value)}
+          onBlur={() => touch("pin")} touched={touched.pin} error={errs.pin}
+          onKeyDown={e => e.key === "Enter" && (mode === "login" ? goLogin() : goSignup())} />
 
         {mode === "signup" && (
           <>
-            <Input label="Your Fitness Goal" value={goal} onChange={e => setGoal(e.target.value)} placeholder="e.g. Build muscle, lose weight" />
-            <Input label="Age (optional)" type="number" value={age} onChange={e => setAge(e.target.value)} />
-            <Input label="Coach Code (email or ID — optional)" value={coachCode} onChange={e => setCoachCode(e.target.value)} placeholder="Leave blank for default coach" />
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: C.textSec, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}>Your Fitness Goal</label>
+              <input value={fields.goal} onChange={e => set("goal", e.target.value)} placeholder="e.g. Build muscle, lose weight" style={plainInput} />
+            </div>
+            <VField label="Age (2-digit, e.g. 24)" type="number" placeholder="e.g. 24"
+              value={fields.age} onChange={e => set("age", e.target.value)}
+              onBlur={() => touch("age")} touched={touched.age} error={errs.age} />
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: C.textSec, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}>Coach Code (optional)</label>
+              <input value={fields.coachCode} onChange={e => set("coachCode", e.target.value)} placeholder="Leave blank for default coach" style={plainInput} />
+            </div>
           </>
         )}
 
-        {err && <div style={{ color: C.danger, fontSize: 13, marginBottom: 12, textAlign: "center" }}>{err}</div>}
+        {submitErr && <div style={{ color: C.danger, fontSize: 13, marginBottom: 12, textAlign: "center", fontWeight: 500 }}>{submitErr}</div>}
 
         <Btn full onClick={mode === "login" ? goLogin : goSignup}>
           {mode === "login" ? "Sign In" : "Create Account"}
