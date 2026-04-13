@@ -1,6 +1,13 @@
+// ─────────────────────────────────────────────────────────────
+// App.jsx — FitPulse single-file React app
+// All screens, components, and styles live here.
+// Data is persisted in localStorage under the key "fp2".
+// ─────────────────────────────────────────────────────────────
 import { useState, useEffect, useCallback, useMemo } from "react";
 
-// ── palette ──
+// ── Colour palette ──
+// All colours are defined once here so changing a single value
+// updates the entire UI consistently.
 const C = {
   bg: "#f5f0ea", surface: "#ede8e0", card: "#e8e2d9", cardHover: "#dfd8ce",
   accent: "#8db87a", accentDim: "rgba(141,184,122,0.18)", accentText: "#5a8c45",
@@ -10,16 +17,24 @@ const C = {
   white: "#faf7f3",
 };
 
-const uid = () => Math.random().toString(36).slice(2, 10);
-const now = () => new Date().toISOString();
-const fmtDate = (iso) => { if (!iso) return ""; const d = new Date(iso); return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }); };
-const fmtFull = (iso) => { if (!iso) return ""; const d = new Date(iso); return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }); };
+// ── Utility helpers ──
+const uid = () => Math.random().toString(36).slice(2, 10); // generates a short random ID
+const now = () => new Date().toISOString();                 // current timestamp as ISO string
+const fmtDate = (iso) => { if (!iso) return ""; const d = new Date(iso); return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }); };       // e.g. "Apr 6"
+const fmtFull = (iso) => { if (!iso) return ""; const d = new Date(iso); return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }); }; // e.g. "Apr 6, 2026, 10:00 AM"
 
-// ── storage ──
+// ── Storage helpers ──
+// load() reads a JSON value from localStorage; returns the fallback (fb) if nothing is saved yet.
+// save() serialises a value to JSON and writes it to localStorage.
+// Both are wrapped in try/catch so private browsing or storage-full errors don't crash the app.
 function load(key, fb) { try { const r = localStorage.getItem(key); return r ? JSON.parse(r) : fb; } catch { return fb; } }
 function save(key, v) { try { localStorage.setItem(key, JSON.stringify(v)); } catch {} }
 
-// ── seed ──
+// ── Seed data ──
+// This is the default dataset loaded on first launch (when localStorage is empty).
+// It includes demo users, workout programs, assignments, sessions, nutrition plans,
+// meal logs, trainer notes, feedback, and income records.
+// Once the user makes changes, their data overwrites this seed in localStorage.
 const SEED = {
   users: [
     { id: "t1", name: "Coach Alex", email: "alex@fitpro.com", role: "trainer", pin: "1234", status: "active" },
@@ -77,7 +92,9 @@ const SEED = {
   income: [],
 };
 
-// ── SVG icons (simple, bold) ──
+// ── SVG icon paths ──
+// Each key is a name used by the <Ic> component below.
+// Icons are drawn as SVG path/shape elements at a 24×24 viewBox.
 const icons = {
   home: <path d="M3 10.5L12 3l9 7.5V21a1 1 0 01-1 1h-5v-6h-6v6H4a1 1 0 01-1-1z"/>,
   users: <><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/><path d="M16 3.13a4 4 0 010 7.75M21 21v-2a4 4 0 00-3-3.87"/></>,
@@ -98,11 +115,17 @@ const icons = {
   star: <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>,
   dollar: <><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></>,
 };
+// <Ic> renders any icon by name at a given size and colour.
+// Usage: <Ic name="trash" size={18} color={C.danger} />
 const Ic = ({ name, size = 22, color = "currentColor" }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{icons[name]}</svg>
 );
 
-// ── Shared Components ──
+// ── Shared UI components ──
+// These are small building blocks reused across multiple screens.
+
+// Sheet — a modal drawer that slides up from the bottom.
+// Clicking the dark overlay (sheetOverlay) closes it via onClose.
 function Sheet({ open, onClose, title, children }) {
   if (!open) return null;
   return (
@@ -119,6 +142,7 @@ function Sheet({ open, onClose, title, children }) {
   );
 }
 
+// Input — a labelled text/number input with consistent styling.
 function Input({ label, ...props }) {
   return (
     <div style={{ marginBottom: 14 }}>
@@ -127,6 +151,7 @@ function Input({ label, ...props }) {
     </div>
   );
 }
+// Textarea — same as Input but multi-line (for notes, feedback, etc).
 function Textarea({ label, ...props }) {
   return (
     <div style={{ marginBottom: 14 }}>
@@ -135,10 +160,14 @@ function Textarea({ label, ...props }) {
     </div>
   );
 }
+// Btn — button with three variants: "primary" (green fill), "outline" (border only), "danger" (red).
+// `full` stretches it to 100% width; `small` reduces padding and font size.
 function Btn({ children, variant = "primary", full, small, style: sx, ...props }) {
   const base = { ...s.btn, ...(variant === "primary" ? s.btnPrimary : variant === "danger" ? s.btnDanger : s.btnOutline), ...(full && { width: "100%" }), ...(small && { padding: "8px 14px", fontSize: 13 }), ...sx };
   return <button style={base} {...props}>{children}</button>;
 }
+// MacroRing — an animated circular progress ring for calories/macros.
+// `value` is the current amount, `max` is the goal; the ring fills proportionally.
 function MacroRing({ value, max, color, label, size = 52 }) {
   const pct = max > 0 ? Math.min(1, value / max) : 0;
   const r = (size - 8) / 2;
@@ -159,40 +188,60 @@ function MacroRing({ value, max, color, label, size = 52 }) {
 // MAIN APP
 // ══════════════════════════════════════
 export default function App() {
-  const [ready, setReady] = useState(false);
-  const [user, setUser] = useState(null);
-  const [data, setData] = useState(SEED);
-  const [tab, setTab] = useState("home");
-  const [screen, setScreen] = useState(null); // {type, payload}
-  const [sheet, setSheet] = useState(null);
-  const [editProg, setEditProg] = useState(null);
-  const [clientTab, setClientTab] = useState("workout");
-  const [confirmRemove, setConfirmRemove] = useState(null); // client object to remove
+  // ── App-level state ──
+  const [ready, setReady] = useState(false);         // false until localStorage has been read
+  const [user, setUser] = useState(null);            // currently logged-in user object (or null)
+  const [data, setData] = useState(SEED);            // the entire app dataset (users, programs, sessions, etc.)
+  const [tab, setTab] = useState("home");            // active bottom-nav tab ID
+  const [screen, setScreen] = useState(null);        // a "pushed" full-screen overlay, e.g. {type:"client", payload:c}
+  const [sheet, setSheet] = useState(null);          // which bottom-sheet form is open (string key or null)
+  const [editProg, setEditProg] = useState(null);    // program being edited in the program form sheet
+  const [clientTab, setClientTab] = useState("workout"); // active sub-tab inside ClientDetail
+  const [confirmRemove, setConfirmRemove] = useState(null); // client object pending trash confirmation
 
+  // ── Persistence ──
+  // On mount: load saved data from localStorage, replacing the SEED defaults.
   useEffect(() => { const d = load("fp2", null); if (d) setData(d); setReady(true); }, []);
+  // Whenever data changes (after ready): write the latest state back to localStorage.
   useEffect(() => { if (ready) save("fp2", data); }, [data, ready]);
 
+  // `up` is a safe state updater: receives a mutator function, shallow-clones data,
+  // applies the mutation, then sets the new state — triggering a re-render + save.
   const up = useCallback((fn) => setData(prev => { const n = { ...prev }; fn(n); return { ...n }; }), []);
+
+  // ── Derived values ──
   const isTrainer = user?.role === "trainer";
+  // `clients` is the list of active clients belonging to the logged-in trainer (or the current client's trainer).
   const clients = useMemo(() => data.users.filter(u => u.role === "client" && u.status === "active" && u.trainerId === (isTrainer ? user?.id : user?.trainerId)), [data.users, user, isTrainer]);
+  // `pendingClients` lists sign-ups awaiting trainer approval.
   const pendingClients = useMemo(() => isTrainer ? data.users.filter(u => u.role === "client" && u.status === "pending" && u.trainerId === user?.id) : [], [data.users, user, isTrainer]);
 
+  // ── Data lookup helpers ──
+  // These functions look up related records for a given client ID.
   const getProg = (cid) => { const a = data.assignments.find(x => x.clientId === cid); return a ? data.programs.find(p => p.id === a.programId) : null; };
   const getSessions = (cid) => data.sessions.filter(x => x.clientId === cid).sort((a, b) => new Date(b.date) - new Date(a.date));
   const getNotes = (cid) => data.notes.filter(x => x.clientId === cid).sort((a, b) => new Date(b.at) - new Date(a.at));
   const getNutrition = (cid) => data.nutrition.find(x => x.clientId === cid);
   const getMeals = (cid) => data.meals.filter(x => x.clientId === cid).sort((a, b) => b.date.localeCompare(a.date));
 
+  // ── Navigation helpers ──
+  // push() opens a full-screen overlay; pop() closes it and returns to the tab bar.
   const push = (type, payload) => { setScreen({ type, payload }); };
   const pop = () => setScreen(null);
 
-  // ── CRUD ──
+  // ── CRUD functions ──
+  // Each function calls `up()` with a mutator that modifies the relevant array in `data`.
+  // Changes are immediately reflected in the UI and saved to localStorage.
+
   const addClient = (c) => up(d => { d.users = [...d.users, { ...c, id: uid(), role: "client", trainerId: user.id, pin: "0000", status: "active" }]; });
+  // removeClient also clears the client's program assignments so no orphaned records remain.
   const removeClient = (id) => up(d => { d.users = d.users.filter(u => u.id !== id); d.assignments = d.assignments.filter(a => a.clientId !== id); });
+  // approveClient / rejectClient flip the status field set during signup.
   const approveClient = (id) => up(d => { d.users = d.users.map(u => u.id === id ? { ...u, status: "active" } : u); });
   const rejectClient = (id) => up(d => { d.users = d.users.map(u => u.id === id ? { ...u, status: "rejected" } : u); });
   const addProgram = (p) => up(d => { d.programs = [...d.programs, { ...p, id: uid(), trainerId: user.id }]; });
   const updateProgram = (id, p) => up(d => { d.programs = d.programs.map(x => x.id === id ? { ...x, ...p } : x); });
+  // assignProg toggles: if the client already has this program, it removes the assignment; otherwise it replaces any existing assignment with the new one.
   const assignProg = (cid, pid) => up(d => {
     const existing = d.assignments.find(a => a.clientId === cid && a.programId === pid);
     if (existing) { d.assignments = d.assignments.filter(a => !(a.clientId === cid && a.programId === pid)); }
@@ -202,16 +251,23 @@ export default function App() {
   const delSession = (id) => up(d => { d.sessions = d.sessions.filter(x => x.id !== id); });
   const addNote = (n) => up(d => { d.notes = [...d.notes, { ...n, id: uid(), at: now() }]; });
   const delNote = (id) => up(d => { d.notes = d.notes.filter(x => x.id !== id); });
+  // addNutrition upserts: updates existing plan if one exists for this client, otherwise creates a new one.
   const addNutrition = (n) => up(d => { const ex = d.nutrition.find(x => x.clientId === n.clientId); if (ex) d.nutrition = d.nutrition.map(x => x.id === ex.id ? { ...x, ...n } : x); else d.nutrition = [...d.nutrition, { ...n, id: uid() }]; });
+  // addMeal appends food items to the day's log; if a log for that date already exists it merges items in.
   const addMeal = (ml) => up(d => { const ex = d.meals.find(m => m.clientId === ml.clientId && m.date === ml.date); if (ex) d.meals = d.meals.map(m => m.id === ex.id ? { ...m, items: [...m.items, ...ml.items] } : m); else d.meals = [...d.meals, { ...ml, id: uid() }]; });
   const addFeedback = (fb) => up(d => { if (!d.feedback) d.feedback = []; d.feedback = [...d.feedback, { ...fb, id: uid(), at: now() }]; });
+  // setIncome upserts monthly revenue: one record per trainer per month (keyed "YYYY-MM").
   const setIncome = (trainerId, month, amount) => up(d => { if (!d.income) d.income = []; const ex = d.income.find(x => x.trainerId === trainerId && x.month === month); if (ex) d.income = d.income.map(x => x === ex ? { ...x, amount } : x); else d.income = [...d.income, { id: uid(), trainerId, month, amount }]; });
 
   // ═══════════════════════════
-  // LOGIN
+  // GATE: show loading / login / waitlist screens before the main app
   // ═══════════════════════════
+
+  // Show a splash logo while localStorage is being read on first render.
   if (!ready) return <div style={{ ...s.full, display: "flex", alignItems: "center", justifyContent: "center" }}><div style={{ color: C.accent, fontFamily: "'Outfit',sans-serif", fontSize: 24, fontWeight: 800 }}>FitPulse</div></div>;
 
+  // No user logged in → show the login / sign-up screen.
+  // onSignup creates the user with status "pending" so they land on the waitlist screen below.
   if (!user) {
     return <LoginScreen users={data.users} onLogin={u => { setUser(u); setTab("home"); }} onSignup={u => {
       const newUser = { ...u, id: uid(), status: "pending" };
@@ -222,8 +278,9 @@ export default function App() {
   }
 
   // ── Pending approval screen ──
+  // Shown after sign-up until the trainer approves the account.
   if (user.status === "pending") {
-    // Pull latest status from data in case trainer approved mid-session
+    // Re-check localStorage in case the trainer approved while this tab was open.
     const liveUser = data.users.find(u => u.id === user.id);
     if (liveUser?.status === "active") {
       setUser(liveUser);
@@ -253,6 +310,7 @@ export default function App() {
   }
 
   // ── Rejected screen ──
+  // Shown when the trainer clicked "Decline" on this user's pending request.
   if (user.status === "rejected") {
     return (
       <div style={{ ...s.full, flexDirection: "column", gap: 0, padding: "0 28px", textAlign: "center" }}>
@@ -275,13 +333,20 @@ export default function App() {
     );
   }
 
+  // curClient resolves who the "active" client is depending on context:
+  // - Trainer navigated into a client detail → use the pushed screen payload.
+  // - Logged-in user is a client → they are always their own curClient.
+  // - Trainer on the main tab bar → null (no single client in context).
   const curClient = screen?.type === "client" ? screen.payload : (!isTrainer ? user : null);
 
   // ═══════════════════════════
   // SCREENS
   // ═══════════════════════════
 
-  // -- HOME (Trainer) --
+  // ── Trainer home screen ──
+  // Shows summary stats, any clients waiting for approval, and the full active client list.
+  // Tapping a client row calls push("client", c) to open ClientDetail as an overlay.
+  // The trash button on each row sets confirmRemove, which triggers the confirmation modal.
   const HomeTrainer = () => {
     const totalSessions = data.sessions.filter(s => clients.some(c => c.id === s.clientId)).length;
     return (
@@ -358,7 +423,8 @@ export default function App() {
     );
   };
 
-  // -- HOME (Client) --
+  // ── Client home screen ──
+  // Shows the client's today macro rings, their current workout program, and recent trainer notes.
   const HomeClient = () => {
     const prog = getProg(user.id);
     const nutr = getNutrition(user.id);
@@ -416,7 +482,10 @@ export default function App() {
     );
   };
 
-  // -- PROGRAMS TAB --
+  // ── Trainer programs tab ──
+  // Lists all workout programs the trainer has created.
+  // Tapping a program opens its detail screen; the edit button opens the program form sheet.
+  // Client chip buttons at the bottom of each card toggle program assignment on/off.
   const ProgramsTab = () => {
     const progs = data.programs.filter(p => p.trainerId === user.id);
     return (
@@ -465,7 +534,10 @@ export default function App() {
     );
   };
 
-  // -- CLIENT DETAIL --
+  // ── Client detail screen (trainer view) ──
+  // Full profile for a single client, accessed by the trainer by tapping a client row.
+  // Contains four sub-tabs: Workout, Weekly, Nutrition, and Notes.
+  // Only trainers see action buttons (Log Session, Edit Plan, Add Note, etc.).
   const ClientDetail = () => {
     const c = curClient;
     if (!c) return null;
@@ -740,9 +812,15 @@ export default function App() {
     );
   };
 
-  // ═══════════════════════════
-  // SHEETS (bottom sheets for forms)
-  // ═══════════════════════════
+  // ═══════════════════════════════════════════════════════
+  // BOTTOM SHEET FORMS
+  // Each sheet is a self-contained form component rendered
+  // inside the shared <Sheet> drawer when `sheet` state matches
+  // its key.  They manage their own local field state and call
+  // the CRUD functions above on submit.
+  // ═══════════════════════════════════════════════════════
+
+  // AddClientSheet — trainer manually adds a new client (bypasses the waitlist).
   const AddClientSheet = () => {
     const [name, setName] = useState(""); const [goal, setGoal] = useState(""); const [age, setAge] = useState("");
     return (
@@ -755,6 +833,8 @@ export default function App() {
     );
   };
 
+  // AddProgramSheet — create or edit a workout program.
+  // If `editProg` is set, the form pre-fills with its data and calls updateProgram on save.
   const AddProgramSheet = () => {
     const [name, setName] = useState(editProg?.name || ""); const [desc, setDesc] = useState(editProg?.desc || "");
     const [exs, setExs] = useState(editProg?.exercises || [{ id: uid(), name: "", sets: 3, reps: 10, weight: 0 }]);
@@ -783,6 +863,8 @@ export default function App() {
     );
   };
 
+  // LogSessionSheet — trainer logs actual sets/reps/weight for a completed workout session.
+  // Pre-fills with the assigned program's default sets so the trainer only edits what changed.
   const LogSessionSheet = () => {
     const c = curClient;
     const prog = getProg(c?.id);
@@ -810,6 +892,7 @@ export default function App() {
     );
   };
 
+  // NoteSheet — trainer adds a private note to a client's profile.
   const NoteSheet = () => {
     const [text, setText] = useState("");
     return (
@@ -820,6 +903,7 @@ export default function App() {
     );
   };
 
+  // NutritionSheet — trainer sets or updates daily macro targets for a client.
   const NutritionSheet = () => {
     const existing = getNutrition(curClient?.id);
     const [name, setName] = useState(existing?.name || ""); const [cal, setCal] = useState(existing?.cal || "");
@@ -838,6 +922,7 @@ export default function App() {
     );
   };
 
+  // FeedbackSheet — client submits a star rating + text review visible to their trainer.
   const FeedbackSheet = () => {
     const [text, setText] = useState("");
     const [rating, setRating] = useState(5);
@@ -858,6 +943,8 @@ export default function App() {
     );
   };
 
+  // MealSheet — trainer logs a food item for a client's current day.
+  // addMeal merges it into the existing daily log or creates a new one.
   const MealSheet = () => {
     const [name, setName] = useState(""); const [cal, setCal] = useState(""); const [pro, setPro] = useState(""); const [carbs, setCarbs] = useState(""); const [fat, setFat] = useState("");
     return (
@@ -874,9 +961,12 @@ export default function App() {
     );
   };
 
-  // ═══════════════════════════
+  // ═══════════════════════════════════════════════════════
   // BOTTOM TAB BAR
-  // ═══════════════════════════
+  // Trainers and clients see different tab sets.
+  // `tabItems` picks the right array based on the logged-in role.
+  // The tab bar is hidden when a screen overlay (e.g. ClientDetail) is active.
+  // ═══════════════════════════════════════════════════════
   const trainerTabs = [
     { id: "home", label: "Clients", icon: "users" },
     { id: "programs", label: "Programs", icon: "dumbbell" },
@@ -891,7 +981,8 @@ export default function App() {
   ];
   const tabItems = isTrainer ? trainerTabs : clientTabs;
 
-  // Account tab content
+  // AccountTab — shows the logged-in user's profile info and a sign-out button.
+  // Clients also see a "Leave Feedback" button here.
   const AccountTab = () => (
     <div style={s.page}>
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 32 }}>
@@ -909,7 +1000,7 @@ export default function App() {
     </div>
   );
 
-  // Client history tab
+  // HistoryTab — client's full session history in reverse-chronological order.
   const HistoryTab = () => {
     const sessions = getSessions(user.id);
     return (
@@ -940,7 +1031,10 @@ export default function App() {
     );
   };
 
-  // ── Trainer Business Tab ──
+  // ── BusinessTab (trainer only) ──
+  // Overview of the trainer's business metrics for the current week.
+  // Includes: stat pills, monthly revenue input, an SVG compliance bar chart
+  // comparing each client's macro and workout adherence, and recent client feedback cards.
   const BusinessTab = () => {
     const today = new Date();
     const dow = today.getDay();
@@ -1121,7 +1215,12 @@ export default function App() {
     );
   };
 
-  // Client weekly plan tab
+  // ── WeeklyTab (client bottom nav) ──
+  // Shows the client's current week: a 7-day strip highlighting today and workout days,
+  // their assigned program, sessions logged this week, and weekly macro progress bars.
+  // Note: must be defined at module level (outside App) to avoid React remount issues —
+  // this version is intentionally kept inside App because it uses closures over `data`,
+  // `user`, and the lookup helpers defined above.
   const WeeklyTab = () => {
     const prog = getProg(user.id);
     const nutr = getNutrition(user.id);
@@ -1246,9 +1345,10 @@ export default function App() {
     );
   };
 
-  // ═══════════════════════════
-  // RENDER
-  // ═══════════════════════════
+  // ═══════════════════════════════════════════════════════
+  // RENDER — pick which content to show based on active screen/tab
+  // Priority: screen overlay (ClientDetail, ProgramDetail) > tab bar selection
+  // ═══════════════════════════════════════════════════════
   let content;
   if (screen?.type === "client") content = <ClientDetail />;
   else if (screen?.type === "program-detail") {
@@ -1323,7 +1423,7 @@ export default function App() {
         )}
       </div>
 
-      {/* Sheets */}
+      {/* Bottom sheet forms — rendered outside the scrollArea so they overlay everything */}
       {sheet === "add-client" && <AddClientSheet />}
       {sheet === "add-program" && <AddProgramSheet />}
       {sheet === "log-session" && <LogSessionSheet />}
@@ -1332,7 +1432,8 @@ export default function App() {
       {sheet === "log-meal" && <MealSheet />}
       {sheet === "feedback" && <FeedbackSheet />}
 
-      {/* Remove client confirmation modal */}
+      {/* Confirmation modal — appears when trainer taps the trash icon on a client row.
+          Shows the client's name and requires an explicit "Remove" click to proceed. */}
       {confirmRemove && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 24 }}
           onClick={() => setConfirmRemove(null)}>
@@ -1364,10 +1465,13 @@ export default function App() {
   );
 }
 
-// ═══════════════════════════
-// LOGIN
-// ═══════════════════════════
-// ── Validated field (must be module-level so React never remounts it on parent re-render) ──
+// ═══════════════════════════════════════════════════════
+// LOGIN SCREEN  (defined outside App so it has a stable identity)
+// ═══════════════════════════════════════════════════════
+
+// VField — a validated input field that shows a green/red border and error message
+// after the user has clicked away (onBlur).  Defined at module level (not inside LoginScreen)
+// so React never remounts it on a parent re-render — which would cause the cursor to jump.
 function VField({ label, fieldKey, type = "text", placeholder, value, onChange, onBlur, onKeyDown, touched, error }) {
   const invalid = touched && error;
   const valid = touched && !error;
@@ -1394,6 +1498,8 @@ function VField({ label, fieldKey, type = "text", placeholder, value, onChange, 
 }
 
 // ── Validation helpers ──
+// Each returns an error string (non-empty = invalid) or "" (valid).
+// Called on every render so errors are always current; shown only after the field is touched.
 const validateName = v => {
   const parts = v.trim().split(/\s+/);
   if (!v.trim()) return "Full name is required";
@@ -1421,15 +1527,18 @@ const validateAge = v => {
   return "";
 };
 
+// LoginScreen — handles both sign-in and sign-up in one component, toggled by `mode`.
+// `fields` holds all form values in a single object; `touched` tracks which fields
+// the user has interacted with so errors only appear after blur, not on first load.
 function LoginScreen({ users, onLogin, onSignup }) {
   const [mode, setMode] = useState("login");
   const [fields, setFields] = useState({ name: "", email: "", pin: "", goal: "", age: "", coachCode: "" });
   const [touched, setTouched] = useState({});
   const [submitErr, setSubmitErr] = useState("");
 
-  const set = (k, v) => setFields(f => ({ ...f, [k]: v }));
-  const touch = (k) => setTouched(t => ({ ...t, [k]: true }));
-  const touchAll = (keys) => setTouched(t => { const n = { ...t }; keys.forEach(k => { n[k] = true; }); return n; });
+  const set = (k, v) => setFields(f => ({ ...f, [k]: v }));       // update one field
+  const touch = (k) => setTouched(t => ({ ...t, [k]: true }));    // mark one field as touched (on blur)
+  const touchAll = (keys) => setTouched(t => { const n = { ...t }; keys.forEach(k => { n[k] = true; }); return n; }); // mark all on submit attempt
 
   const errs = {
     name: validateName(fields.name),
@@ -1527,9 +1636,11 @@ function LoginScreen({ users, onLogin, onSignup }) {
 const togStyle = { flex: 1, padding: "10px 8px", borderRadius: 12, fontSize: 14, fontWeight: 700, cursor: "pointer", border: "none", background: "transparent", color: C.textTer, textAlign: "center", transition: "all 0.15s", fontFamily: "'Outfit',sans-serif" };
 const togActive = { background: C.card, color: C.text, boxShadow: "0 2px 8px rgba(0,0,0,0.2)" };
 
-// ═══════════════════════════
+// ═══════════════════════════════════════════════════════
 // STYLE OBJECTS
-// ═══════════════════════════
+// All inline styles are defined here as a single `s` object
+// so components stay readable and styles are easy to update in one place.
+// ═══════════════════════════════════════════════════════
 const s = {
   full: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: C.bg, padding: 24 },
   shell: { display: "flex", flexDirection: "column", height: "100vh", maxWidth: 480, margin: "0 auto", background: C.bg, position: "relative", overflow: "hidden" },
