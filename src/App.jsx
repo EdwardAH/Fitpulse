@@ -1,9 +1,10 @@
 // ─────────────────────────────────────────────────────────────
 // App.jsx — FitPulse single-file React app
 // All screens, components, and styles live here.
-// Data is persisted in localStorage under the key "fp2".
+// Data is stored in Supabase (PostgreSQL in the cloud).
 // ─────────────────────────────────────────────────────────────
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { supabase } from "./supabase";
 
 // ── Colour palette ──
 // All colours are defined once here so changing a single value
@@ -18,79 +19,9 @@ const C = {
 };
 
 // ── Utility helpers ──
-const uid = () => Math.random().toString(36).slice(2, 10); // generates a short random ID
-const now = () => new Date().toISOString();                 // current timestamp as ISO string
-const fmtDate = (iso) => { if (!iso) return ""; const d = new Date(iso); return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }); };       // e.g. "Apr 6"
-const fmtFull = (iso) => { if (!iso) return ""; const d = new Date(iso); return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }); }; // e.g. "Apr 6, 2026, 10:00 AM"
-
-// ── Storage helpers ──
-// load() reads a JSON value from localStorage; returns the fallback (fb) if nothing is saved yet.
-// save() serialises a value to JSON and writes it to localStorage.
-// Both are wrapped in try/catch so private browsing or storage-full errors don't crash the app.
-function load(key, fb) { try { const r = localStorage.getItem(key); return r ? JSON.parse(r) : fb; } catch { return fb; } }
-function save(key, v) { try { localStorage.setItem(key, JSON.stringify(v)); } catch {} }
-
-// ── Seed data ──
-// This is the default dataset loaded on first launch (when localStorage is empty).
-// It includes demo users, workout programs, assignments, sessions, nutrition plans,
-// meal logs, trainer notes, feedback, and income records.
-// Once the user makes changes, their data overwrites this seed in localStorage.
-const SEED = {
-  users: [
-    { id: "t1", name: "Coach Alex", email: "alex@fitpro.com", role: "trainer", pin: "1234", status: "active" },
-    { id: "c1", name: "Sarah Chen", email: "sarah@mail.com", role: "client", trainerId: "t1", pin: "0000", age: 28, goal: "Build lean muscle", emoji: "💪", status: "active" },
-    { id: "c2", name: "Marcus J.", email: "marcus@mail.com", role: "client", trainerId: "t1", pin: "0000", age: 34, goal: "Lose 20 lbs", emoji: "🔥", status: "active" },
-    { id: "c3", name: "Priya Patel", email: "priya@mail.com", role: "client", trainerId: "t1", pin: "0000", age: 25, goal: "Marathon prep", emoji: "🏃‍♀️", status: "active" },
-  ],
-  programs: [
-    { id: "p1", trainerId: "t1", name: "Hypertrophy A", desc: "Upper/lower split for growth", exercises: [
-      { id: "e1", name: "Bench Press", sets: 4, reps: 8, weight: 135 },
-      { id: "e2", name: "Bent-Over Row", sets: 4, reps: 8, weight: 115 },
-      { id: "e3", name: "Overhead Press", sets: 3, reps: 10, weight: 75 },
-      { id: "e4", name: "Barbell Curl", sets: 3, reps: 12, weight: 50 },
-    ]},
-    { id: "p2", trainerId: "t1", name: "Fat Loss HIIT", desc: "Metabolic conditioning", exercises: [
-      { id: "e5", name: "KB Swing", sets: 4, reps: 15, weight: 35 },
-      { id: "e6", name: "Goblet Squat", sets: 4, reps: 12, weight: 40 },
-      { id: "e7", name: "Burpees", sets: 3, reps: 15, weight: 0 },
-    ]},
-  ],
-  assignments: [{ clientId: "c1", programId: "p1" }, { clientId: "c2", programId: "p2" }],
-  sessions: [
-    { id: "s1", clientId: "c1", programId: "p1", date: "2026-04-06T10:00:00Z", logs: [
-      { exerciseId: "e1", sets: [{ reps: 8, weight: 135 }, { reps: 8, weight: 135 }, { reps: 7, weight: 135 }, { reps: 6, weight: 135 }] },
-      { exerciseId: "e2", sets: [{ reps: 8, weight: 115 }, { reps: 8, weight: 115 }, { reps: 8, weight: 115 }, { reps: 7, weight: 115 }] },
-    ]},
-    { id: "s2", clientId: "c1", programId: "p1", date: "2026-04-03T09:00:00Z", logs: [
-      { exerciseId: "e1", sets: [{ reps: 8, weight: 130 }, { reps: 8, weight: 130 }, { reps: 8, weight: 130 }, { reps: 7, weight: 130 }] },
-    ]},
-    { id: "s3", clientId: "c2", programId: "p2", date: "2026-04-07T14:00:00Z", logs: [
-      { exerciseId: "e5", sets: [{ reps: 15, weight: 35 }, { reps: 15, weight: 35 }, { reps: 12, weight: 35 }] },
-    ]},
-  ],
-  nutrition: [
-    { id: "n1", clientId: "c1", name: "Lean Bulk 2800", cal: 2800, protein: 180, carbs: 310, fat: 80 },
-    { id: "n2", clientId: "c2", name: "Cut 2000", cal: 2000, protein: 200, carbs: 150, fat: 65 },
-  ],
-  meals: [
-    { id: "m1", clientId: "c1", date: "2026-04-08", items: [
-      { name: "Oatmeal + Whey", cal: 520, protein: 40, carbs: 65, fat: 10 },
-      { name: "Chicken Rice Bowl", cal: 680, protein: 50, carbs: 70, fat: 15 },
-      { name: "Salmon + Sweet Potato", cal: 610, protein: 42, carbs: 55, fat: 18 },
-    ]},
-  ],
-  notes: [
-    { id: "nt1", clientId: "c1", text: "Sarah hit a PR on bench — 145×3. Bump working weight next week.", at: "2026-04-06T11:00:00Z" },
-    { id: "nt2", clientId: "c1", text: "Some shoulder tightness. Extra warm-up for OHP days.", at: "2026-04-04T09:30:00Z" },
-    { id: "nt3", clientId: "c2", text: "Marcus down 4 lbs this month. Energy good. Keep current plan.", at: "2026-04-07T15:00:00Z" },
-  ],
-  feedback: [
-    { id: "fb1", clientId: "c1", text: "Love the new program structure! The upper/lower split is working great for me.", rating: 5, at: "2026-04-07T09:00:00Z" },
-    { id: "fb2", clientId: "c2", text: "HIIT sessions are tough but I can already see results. Would love more variety in the cardio.", rating: 4, at: "2026-04-06T18:30:00Z" },
-    { id: "fb3", clientId: "c3", text: "Nutrition plan is really helping with my energy on long runs. Thanks!", rating: 5, at: "2026-04-05T08:00:00Z" },
-  ],
-  income: [],
-};
+const uid = () => Math.random().toString(36).slice(2, 10); // used for local IDs (Supabase generates real UUIDs)
+const fmtDate = (iso) => { if (!iso) return ""; const d = new Date(iso); return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }); };
+const fmtFull = (iso) => { if (!iso) return ""; const d = new Date(iso); return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }); };
 
 // ── SVG icon paths ──
 // Each key is a name used by the <Ic> component below.
@@ -189,102 +120,173 @@ function MacroRing({ value, max, color, label, size = 52 }) {
 // ══════════════════════════════════════
 export default function App() {
   // ── App-level state ──
-  const [ready, setReady] = useState(false);         // false until localStorage has been read
-  const [user, setUser] = useState(null);            // currently logged-in user object (or null)
-  const [data, setData] = useState(SEED);            // the entire app dataset (users, programs, sessions, etc.)
-  const [tab, setTab] = useState("home");            // active bottom-nav tab ID
-  const [screen, setScreen] = useState(null);        // a "pushed" full-screen overlay, e.g. {type:"client", payload:c}
-  const [sheet, setSheet] = useState(null);          // which bottom-sheet form is open (string key or null)
-  const [editProg, setEditProg] = useState(null);    // program being edited in the program form sheet
-  const [clientTab, setClientTab] = useState("workout"); // active sub-tab inside ClientDetail
-  const [confirmRemove, setConfirmRemove] = useState(null); // client object pending trash confirmation
+  const [ready, setReady] = useState(false);         // false until Supabase auth check completes
+  const [user, setUser] = useState(null);            // profile row for the logged-in user
+  const [data, setData] = useState({ clients: [], pendingClients: [], programs: [], assignments: [], sessions: [], nutrition: [], meals: [], notes: [], feedback: [], income: [] });
+  const [tab, setTab] = useState("home");
+  const [screen, setScreen] = useState(null);
+  const [sheet, setSheet] = useState(null);
+  const [editProg, setEditProg] = useState(null);
+  const [clientTab, setClientTab] = useState("workout");
+  const [confirmRemove, setConfirmRemove] = useState(null);
 
-  // ── Persistence ──
-  // On mount: load saved data from localStorage, replacing the SEED defaults.
-  useEffect(() => { const d = load("fp2", null); if (d) setData(d); setReady(true); }, []);
-  // Whenever data changes (after ready): write the latest state back to localStorage.
-  useEffect(() => { if (ready) save("fp2", data); }, [data, ready]);
+  // ── Auth: listen for Supabase session changes ──
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) loadProfile(session.user.id); else setReady(true);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
+      if (session) loadProfile(session.user.id); else { setUser(null); setReady(true); }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
 
-  // `up` is a safe state updater: receives a mutator function, shallow-clones data,
-  // applies the mutation, then sets the new state — triggering a re-render + save.
-  const up = useCallback((fn) => setData(prev => { const n = { ...prev }; fn(n); return { ...n }; }), []);
+  const loadProfile = async (uid) => {
+    const { data: profile } = await supabase.from("profiles").select("*").eq("id", uid).single();
+    if (profile) { setUser(profile); } else setReady(true);
+  };
+
+  // ── Fetch all data after profile loads ──
+  useEffect(() => { if (user) fetchData(); }, [user]);
+
+  const fetchData = useCallback(async () => {
+    if (!user) return;
+    const isTrainer = user.role === "trainer";
+    const tid = isTrainer ? user.id : user.trainer_id;
+
+    const [prog, asgn, sess, nutr, mls, nts, fb, inc] = await Promise.all([
+      supabase.from("programs").select("*").eq("trainer_id", tid),
+      supabase.from("assignments").select("*"),
+      supabase.from("sessions").select("*"),
+      supabase.from("nutrition").select("*"),
+      supabase.from("meals").select("*"),
+      supabase.from("notes").select("*"),
+      supabase.from("feedback").select("*"),
+      isTrainer ? supabase.from("income").select("*").eq("trainer_id", user.id) : { data: [] },
+    ]);
+
+    // fetch client profiles for trainer, or trainer's profile for client
+    let clientRows = [], pendingRows = [];
+    if (isTrainer) {
+      const { data: all } = await supabase.from("profiles").select("*").eq("trainer_id", user.id).eq("role", "client");
+      clientRows = (all || []).filter(c => c.status === "active");
+      pendingRows = (all || []).filter(c => c.status === "pending");
+    }
+
+    setData({
+      clients: clientRows,
+      pendingClients: pendingRows,
+      programs: prog.data || [],
+      assignments: asgn.data || [],
+      sessions: sess.data || [],
+      nutrition: nutr.data || [],
+      meals: mls.data || [],
+      notes: nts.data || [],
+      feedback: fb.data || [],
+      income: inc.data || [],
+    });
+    setReady(true);
+  }, [user]);
 
   // ── Derived values ──
   const isTrainer = user?.role === "trainer";
-  // `clients` is the list of active clients belonging to the logged-in trainer (or the current client's trainer).
-  const clients = useMemo(() => data.users.filter(u => u.role === "client" && u.status === "active" && u.trainerId === (isTrainer ? user?.id : user?.trainerId)), [data.users, user, isTrainer]);
-  // `pendingClients` lists sign-ups awaiting trainer approval.
-  const pendingClients = useMemo(() => isTrainer ? data.users.filter(u => u.role === "client" && u.status === "pending" && u.trainerId === user?.id) : [], [data.users, user, isTrainer]);
+  const clients = data.clients;
+  const pendingClients = data.pendingClients;
 
   // ── Data lookup helpers ──
-  // These functions look up related records for a given client ID.
-  const getProg = (cid) => { const a = data.assignments.find(x => x.clientId === cid); return a ? data.programs.find(p => p.id === a.programId) : null; };
-  const getSessions = (cid) => data.sessions.filter(x => x.clientId === cid).sort((a, b) => new Date(b.date) - new Date(a.date));
-  const getNotes = (cid) => data.notes.filter(x => x.clientId === cid).sort((a, b) => new Date(b.at) - new Date(a.at));
-  const getNutrition = (cid) => data.nutrition.find(x => x.clientId === cid);
-  const getMeals = (cid) => data.meals.filter(x => x.clientId === cid).sort((a, b) => b.date.localeCompare(a.date));
+  const getProg = (cid) => {
+    const a = data.assignments.find(x => x.client_id === cid);
+    return a ? data.programs.find(p => p.id === a.program_id) : null;
+  };
+  const getSessions = (cid) => (data.sessions || []).filter(x => x.client_id === cid).sort((a, b) => new Date(b.date) - new Date(a.date));
+  const getNotes = (cid) => (data.notes || []).filter(x => x.client_id === cid).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  const getNutrition = (cid) => (data.nutrition || []).find(x => x.client_id === cid);
+  const getMeals = (cid) => (data.meals || []).filter(x => x.client_id === cid).sort((a, b) => b.date.localeCompare(a.date));
 
   // ── Navigation helpers ──
-  // push() opens a full-screen overlay; pop() closes it and returns to the tab bar.
   const push = (type, payload) => { setScreen({ type, payload }); };
   const pop = () => setScreen(null);
 
-  // ── CRUD functions ──
-  // Each function calls `up()` with a mutator that modifies the relevant array in `data`.
-  // Changes are immediately reflected in the UI and saved to localStorage.
+  // ── CRUD functions (all async, call fetchData() to refresh state) ──
 
-  const addClient = (c) => up(d => { d.users = [...d.users, { ...c, id: uid(), role: "client", trainerId: user.id, pin: "0000", status: "active" }]; });
-  // removeClient also clears the client's program assignments so no orphaned records remain.
-  const removeClient = (id) => up(d => { d.users = d.users.filter(u => u.id !== id); d.assignments = d.assignments.filter(a => a.clientId !== id); });
-  // approveClient / rejectClient flip the status field set during signup.
-  const approveClient = (id) => up(d => { d.users = d.users.map(u => u.id === id ? { ...u, status: "active" } : u); });
-  const rejectClient = (id) => up(d => { d.users = d.users.map(u => u.id === id ? { ...u, status: "rejected" } : u); });
-  const addProgram = (p) => up(d => { d.programs = [...d.programs, { ...p, id: uid(), trainerId: user.id }]; });
-  const updateProgram = (id, p) => up(d => { d.programs = d.programs.map(x => x.id === id ? { ...x, ...p } : x); });
-  // assignProg toggles: if the client already has this program, it removes the assignment; otherwise it replaces any existing assignment with the new one.
-  const assignProg = (cid, pid) => up(d => {
-    const existing = d.assignments.find(a => a.clientId === cid && a.programId === pid);
-    if (existing) { d.assignments = d.assignments.filter(a => !(a.clientId === cid && a.programId === pid)); }
-    else { d.assignments = [...d.assignments.filter(a => a.clientId !== cid), { clientId: cid, programId: pid }]; }
-  });
-  const addSession = (se) => up(d => { d.sessions = [...d.sessions, { ...se, id: uid() }]; });
-  const delSession = (id) => up(d => { d.sessions = d.sessions.filter(x => x.id !== id); });
-  const addNote = (n) => up(d => { d.notes = [...d.notes, { ...n, id: uid(), at: now() }]; });
-  const delNote = (id) => up(d => { d.notes = d.notes.filter(x => x.id !== id); });
-  // addNutrition upserts: updates existing plan if one exists for this client, otherwise creates a new one.
-  const addNutrition = (n) => up(d => { const ex = d.nutrition.find(x => x.clientId === n.clientId); if (ex) d.nutrition = d.nutrition.map(x => x.id === ex.id ? { ...x, ...n } : x); else d.nutrition = [...d.nutrition, { ...n, id: uid() }]; });
-  // addMeal appends food items to the day's log; if a log for that date already exists it merges items in.
-  const addMeal = (ml) => up(d => { const ex = d.meals.find(m => m.clientId === ml.clientId && m.date === ml.date); if (ex) d.meals = d.meals.map(m => m.id === ex.id ? { ...m, items: [...m.items, ...ml.items] } : m); else d.meals = [...d.meals, { ...ml, id: uid() }]; });
-  const addFeedback = (fb) => up(d => { if (!d.feedback) d.feedback = []; d.feedback = [...d.feedback, { ...fb, id: uid(), at: now() }]; });
-  // setIncome upserts monthly revenue: one record per trainer per month (keyed "YYYY-MM").
-  const setIncome = (trainerId, month, amount) => up(d => { if (!d.income) d.income = []; const ex = d.income.find(x => x.trainerId === trainerId && x.month === month); if (ex) d.income = d.income.map(x => x === ex ? { ...x, amount } : x); else d.income = [...d.income, { id: uid(), trainerId, month, amount }]; });
+  const removeClient = async (id) => {
+    await supabase.from("profiles").update({ status: "rejected" }).eq("id", id);
+    fetchData();
+  };
+  const approveClient = async (id) => {
+    await supabase.from("profiles").update({ status: "active" }).eq("id", id);
+    fetchData();
+  };
+  const rejectClient = async (id) => {
+    await supabase.from("profiles").update({ status: "rejected" }).eq("id", id);
+    fetchData();
+  };
+  const addProgram = async (p) => {
+    await supabase.from("programs").insert({ trainer_id: user.id, name: p.name, description: p.description, exercises: p.exercises });
+    fetchData();
+  };
+  const updateProgram = async (id, p) => {
+    await supabase.from("programs").update({ name: p.name, description: p.description, exercises: p.exercises }).eq("id", id);
+    fetchData();
+  };
+  const assignProg = async (cid, pid) => {
+    const existing = data.assignments.find(a => a.client_id === cid && a.program_id === pid);
+    if (existing) {
+      await supabase.from("assignments").delete().eq("client_id", cid).eq("program_id", pid);
+    } else {
+      await supabase.from("assignments").delete().eq("client_id", cid);
+      await supabase.from("assignments").insert({ client_id: cid, program_id: pid });
+    }
+    fetchData();
+  };
+  const addSession = async (se) => {
+    await supabase.from("sessions").insert({ client_id: se.clientId, program_id: se.programId, date: se.date, logs: se.logs });
+    fetchData();
+  };
+  const delSession = async (id) => {
+    await supabase.from("sessions").delete().eq("id", id);
+    fetchData();
+  };
+  const addNote = async (n) => {
+    await supabase.from("notes").insert({ client_id: n.clientId, text: n.text });
+    fetchData();
+  };
+  const delNote = async (id) => {
+    await supabase.from("notes").delete().eq("id", id);
+    fetchData();
+  };
+  const addNutrition = async (n) => {
+    await supabase.from("nutrition").upsert({ client_id: n.clientId, name: n.name, cal: n.cal, protein: n.protein, carbs: n.carbs, fat: n.fat }, { onConflict: "client_id" });
+    fetchData();
+  };
+  const addMeal = async (ml) => {
+    const existing = data.meals.find(m => m.client_id === ml.clientId && m.date === ml.date);
+    if (existing) {
+      await supabase.from("meals").update({ items: [...existing.items, ...ml.items] }).eq("id", existing.id);
+    } else {
+      await supabase.from("meals").insert({ client_id: ml.clientId, date: ml.date, items: ml.items });
+    }
+    fetchData();
+  };
+  const addFeedback = async (fb) => {
+    await supabase.from("feedback").insert({ client_id: fb.clientId, text: fb.text, rating: fb.rating });
+    fetchData();
+  };
+  const setIncome = async (trainerId, month, amount) => {
+    await supabase.from("income").upsert({ trainer_id: trainerId, month, amount }, { onConflict: "trainer_id,month" });
+    fetchData();
+  };
 
   // ═══════════════════════════
-  // GATE: show loading / login / waitlist screens before the main app
+  // GATE: loading / login / waitlist / rejected
   // ═══════════════════════════
 
-  // Show a splash logo while localStorage is being read on first render.
   if (!ready) return <div style={{ ...s.full, display: "flex", alignItems: "center", justifyContent: "center" }}><div style={{ color: C.accent, fontFamily: "'Outfit',sans-serif", fontSize: 24, fontWeight: 800 }}>FitPulse</div></div>;
 
-  // No user logged in → show the login / sign-up screen.
-  // onSignup creates the user with status "pending" so they land on the waitlist screen below.
-  if (!user) {
-    return <LoginScreen users={data.users} onLogin={u => { setUser(u); setTab("home"); }} onSignup={u => {
-      const newUser = { ...u, id: uid(), status: "pending" };
-      up(d => { d.users = [...d.users, newUser]; });
-      setUser(newUser);
-      setTab("home");
-    }} />;
-  }
+  if (!user) return <LoginScreen onLogin={() => {}} />;
 
   // ── Pending approval screen ──
-  // Shown after sign-up until the trainer approves the account.
   if (user.status === "pending") {
-    // Re-check localStorage in case the trainer approved while this tab was open.
-    const liveUser = data.users.find(u => u.id === user.id);
-    if (liveUser?.status === "active") {
-      setUser(liveUser);
-    }
     return (
       <div style={{ ...s.full, flexDirection: "column", gap: 0, padding: "0 28px", textAlign: "center" }}>
         <style>{`
@@ -300,9 +302,7 @@ export default function App() {
         <div style={{ display: "inline-block", background: C.accentDim, color: C.accentText, borderRadius: 20, padding: "6px 16px", fontSize: 13, fontWeight: 700, margin: "16px 0 32px" }}>
           {user.name}
         </div>
-        <button
-          onClick={() => { setUser(null); setTab("home"); }}
-          style={{ background: "none", border: `1.5px solid ${C.border}`, borderRadius: 12, padding: "12px 24px", fontSize: 14, color: C.textSec, cursor: "pointer", fontFamily: "'Outfit',sans-serif" }}>
+        <button onClick={() => supabase.auth.signOut()} style={{ background: "none", border: `1.5px solid ${C.border}`, borderRadius: 12, padding: "12px 24px", fontSize: 14, color: C.textSec, cursor: "pointer", fontFamily: "'Outfit',sans-serif" }}>
           Sign out
         </button>
       </div>
@@ -310,7 +310,6 @@ export default function App() {
   }
 
   // ── Rejected screen ──
-  // Shown when the trainer clicked "Decline" on this user's pending request.
   if (user.status === "rejected") {
     return (
       <div style={{ ...s.full, flexDirection: "column", gap: 0, padding: "0 28px", textAlign: "center" }}>
@@ -322,11 +321,9 @@ export default function App() {
         <div style={{ fontSize: 48, marginBottom: 20 }}>🚫</div>
         <div style={{ fontSize: 26, fontWeight: 800, color: C.text, fontFamily: "'Outfit',sans-serif", marginBottom: 10 }}>Access not approved</div>
         <div style={{ fontSize: 15, color: C.textSec, lineHeight: 1.6, marginBottom: 32 }}>
-          Your trainer was unable to accept your request at this time. Please reach out to them directly for more information.
+          Your trainer was unable to accept your request at this time. Please reach out to them directly.
         </div>
-        <button
-          onClick={() => { setUser(null); setTab("home"); }}
-          style={{ background: "none", border: `1.5px solid ${C.border}`, borderRadius: 12, padding: "12px 24px", fontSize: 14, color: C.textSec, cursor: "pointer", fontFamily: "'Outfit',sans-serif" }}>
+        <button onClick={() => supabase.auth.signOut()} style={{ background: "none", border: `1.5px solid ${C.border}`, borderRadius: 12, padding: "12px 24px", fontSize: 14, color: C.textSec, cursor: "pointer", fontFamily: "'Outfit',sans-serif" }}>
           Back to sign in
         </button>
       </div>
@@ -348,7 +345,7 @@ export default function App() {
   // Tapping a client row calls push("client", c) to open ClientDetail as an overlay.
   // The trash button on each row sets confirmRemove, which triggers the confirmation modal.
   const HomeTrainer = () => {
-    const totalSessions = data.sessions.filter(s => clients.some(c => c.id === s.clientId)).length;
+    const totalSessions = data.sessions.filter(s => clients.some(c => c.id === s.client_id)).length;
     return (
       <div style={s.page}>
         <div style={{ padding: "8px 0 20px" }}>
@@ -360,7 +357,7 @@ export default function App() {
           {[
             { val: clients.length, label: "Clients", color: C.accent },
             { val: totalSessions, label: "Sessions", color: C.protein },
-            { val: data.programs.filter(p => p.trainerId === user.id).length, label: "Programs", color: C.warning },
+            { val: data.programs.length, label: "Programs", color: C.warning },
           ].map((s2, i) => (
             <div key={i} style={{ ...s.statPill, minWidth: 100, flex: 1 }}>
               <div style={{ fontSize: 24, fontWeight: 800, fontFamily: "'Outfit',sans-serif", color: s2.color }}>{s2.val}</div>
@@ -456,7 +453,7 @@ export default function App() {
           {prog ? (
             <>
               <div style={{ fontSize: 18, fontWeight: 700, color: C.text, marginBottom: 4 }}>{prog.name}</div>
-              <div style={{ fontSize: 13, color: C.textSec, marginBottom: 12 }}>{prog.desc}</div>
+              <div style={{ fontSize: 13, color: C.textSec, marginBottom: 12 }}>{prog.description}</div>
               {prog.exercises.map(ex => (
                 <div key={ex.id} style={s.exRow}>
                   <span style={{ fontWeight: 600, color: C.text, flex: 1 }}>{ex.name}</span>
@@ -473,7 +470,7 @@ export default function App() {
             {recentNotes.map(n => (
               <div key={n.id} style={{ padding: "10px 0", borderBottom: `1px solid ${C.border}` }}>
                 <div style={{ fontSize: 14, color: C.text, lineHeight: 1.5 }}>{n.text}</div>
-                <div style={{ fontSize: 11, color: C.textTer, marginTop: 4 }}>{fmtFull(n.at)}</div>
+                <div style={{ fontSize: 11, color: C.textTer, marginTop: 4 }}>{fmtFull(n.created_at)}</div>
               </div>
             ))}
           </div>
@@ -487,7 +484,7 @@ export default function App() {
   // Tapping a program opens its detail screen; the edit button opens the program form sheet.
   // Client chip buttons at the bottom of each card toggle program assignment on/off.
   const ProgramsTab = () => {
-    const progs = data.programs.filter(p => p.trainerId === user.id);
+    const progs = data.programs;
     return (
       <div style={s.page}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
@@ -500,7 +497,7 @@ export default function App() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 17, fontWeight: 700, color: C.text }}>{p.name}</div>
-                <div style={{ fontSize: 13, color: C.textSec, marginTop: 2 }}>{p.desc}</div>
+                <div style={{ fontSize: 13, color: C.textSec, marginTop: 2 }}>{p.description}</div>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <div style={{ ...s.badge }}>{p.exercises.length} exercises</div>
@@ -519,7 +516,7 @@ export default function App() {
             {/* Assigned clients */}
             <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
               {clients.map(c => {
-                const assigned = data.assignments.find(a => a.clientId === c.id && a.programId === p.id);
+                const assigned = data.assignments.find(a => a.client_id === c.id && a.program_id === p.id);
                 return (
                   <button key={c.id} onClick={e => { e.stopPropagation(); assignProg(c.id, p.id); }}
                     style={{ ...s.chipBtn, ...(assigned ? { background: C.accentDim, color: C.accent, borderColor: "transparent" } : {}) }}>
@@ -594,7 +591,7 @@ export default function App() {
             <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 12 }}>Session History</div>
             {sessions.length === 0 && <div style={{ color: C.textTer, textAlign: "center", padding: 20 }}>No sessions logged</div>}
             {sessions.map(se => {
-              const p = data.programs.find(x => x.id === se.programId);
+              const p = data.programs.find(x => x.id === se.program_id);
               return (
                 <div key={se.id} style={{ ...s.cardDark, marginBottom: 10 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
@@ -718,7 +715,7 @@ export default function App() {
                 {prog ? (
                   <>
                     <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 2 }}>{prog.name}</div>
-                    <div style={{ fontSize: 13, color: C.textSec, marginBottom: 12 }}>{prog.desc}</div>
+                    <div style={{ fontSize: 13, color: C.textSec, marginBottom: 12 }}>{prog.description}</div>
                     {prog.exercises.map(ex => (
                       <div key={ex.id} style={s.exRow}>
                         <span style={{ fontWeight: 600, color: C.text, flex: 1 }}>{ex.name}</span>
@@ -734,7 +731,7 @@ export default function App() {
                 <>
                   <div style={{ fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 10 }}>Logged This Week</div>
                   {sessionsThisWeek.map(se => {
-                    const p = data.programs.find(x => x.id === se.programId);
+                    const p = data.programs.find(x => x.id === se.program_id);
                     return (
                       <div key={se.id} style={{ ...s.cardDark, marginBottom: 10 }}>
                         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
@@ -799,7 +796,7 @@ export default function App() {
               <div key={n.id} style={{ ...s.cardDark, marginBottom: 10, borderLeft: `3px solid ${C.accent}` }}>
                 <div style={{ fontSize: 14, color: C.text, lineHeight: 1.6, marginBottom: 6 }}>{n.text}</div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: 11, color: C.textTer }}>{fmtFull(n.at)}</span>
+                  <span style={{ fontSize: 11, color: C.textTer }}>{fmtFull(n.created_at)}</span>
                   {isTrainer && (
                     <button style={{ background: "none", border: "none", padding: 4, cursor: "pointer" }} onClick={() => delNote(n.id)}><Ic name="trash" size={14} color={C.danger} /></button>
                   )}
@@ -887,7 +884,7 @@ export default function App() {
             ))}
           </div>
         ))}
-        <Btn full onClick={() => { addSession({ clientId: c.id, programId: prog.id, date: now(), logs }); setSheet(null); }}>Save Session</Btn>
+        <Btn full onClick={() => { addSession({ clientId: c.id, programId: prog.id, date: new Date().toISOString(), logs }); setSheet(null); }}>Save Session</Btn>
       </Sheet>
     );
   };
@@ -995,7 +992,7 @@ export default function App() {
             <Ic name="star" size={16} color={C.text} /> Leave Feedback
           </Btn>
         )}
-        <Btn variant="danger" style={{ marginTop: 12 }} onClick={() => { setUser(null); setScreen(null); setTab("home"); }}><Ic name="logout" size={18} color="#fff" /> Sign Out</Btn>
+        <Btn variant="danger" style={{ marginTop: 12 }} onClick={() => supabase.auth.signOut()}><Ic name="logout" size={18} color="#fff" /> Sign Out</Btn>
       </div>
     </div>
   );
@@ -1008,7 +1005,7 @@ export default function App() {
         <div style={{ fontSize: 26, fontWeight: 800, color: C.text, fontFamily: "'Outfit',sans-serif", marginBottom: 20 }}>Session History</div>
         {sessions.length === 0 && <div style={{ color: C.textTer, textAlign: "center", padding: 40 }}>No sessions yet</div>}
         {sessions.map(se => {
-          const p = data.programs.find(x => x.id === se.programId);
+          const p = data.programs.find(x => x.id === se.program_id);
           return (
             <div key={se.id} style={{ ...s.cardDark, marginBottom: 10 }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
@@ -1047,7 +1044,7 @@ export default function App() {
     const monthKey = today.toISOString().slice(0, 7);
 
     const [incomeVal, setIncomeVal] = useState(() => {
-      const inc = (data.income || []).find(x => x.trainerId === user.id && x.month === monthKey);
+      const inc = (data.income || []).find(x => x.trainer_id === user.id && x.month === monthKey);
       return inc ? String(inc.amount) : "";
     });
 
@@ -1066,8 +1063,8 @@ export default function App() {
 
     const totalSessionsWeek = clientStats.reduce((a, cs) => a + cs.sessionsThisWeek, 0);
     const recentFeedback = (data.feedback || [])
-      .filter(f => clients.some(c => c.id === f.clientId))
-      .sort((a, b) => new Date(b.at) - new Date(a.at))
+      .filter(f => clients.some(c => c.id === f.client_id))
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
       .slice(0, 6);
 
     const chartH = 140;
@@ -1085,7 +1082,7 @@ export default function App() {
           {[
             { val: clients.length, label: "Clients", color: C.accent },
             { val: totalSessionsWeek, label: "Sessions / wk", color: C.protein },
-            { val: data.programs.filter(p => p.trainerId === user.id).length, label: "Programs", color: C.warning },
+            { val: data.programs.length, label: "Programs", color: C.warning },
           ].map((item, i) => (
             <div key={i} style={{ ...s.statPill, flex: 1, minWidth: 80 }}>
               <div style={{ fontSize: 26, fontWeight: 800, fontFamily: "'Outfit',sans-serif", color: item.color }}>{item.val}</div>
@@ -1191,7 +1188,7 @@ export default function App() {
           <div style={{ ...s.cardDark, textAlign: "center", color: C.textTer, padding: 28 }}>No feedback submitted yet</div>
         ) : (
           recentFeedback.map(fb => {
-            const client = clients.find(c => c.id === fb.clientId);
+            const client = clients.find(c => c.id === fb.client_id);
             return (
               <div key={fb.id} style={{ ...s.cardDark, marginBottom: 10, borderLeft: `3px solid ${C.protein}` }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
@@ -1206,7 +1203,7 @@ export default function App() {
                   </div>
                 </div>
                 <div style={{ fontSize: 13, color: C.textSec, lineHeight: 1.55 }}>{fb.text}</div>
-                <div style={{ fontSize: 11, color: C.textTer, marginTop: 6 }}>{fmtFull(fb.at)}</div>
+                <div style={{ fontSize: 11, color: C.textTer, marginTop: 6 }}>{fmtFull(fb.created_at)}</div>
               </div>
             );
           })
@@ -1273,7 +1270,7 @@ export default function App() {
           {prog ? (
             <>
               <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 2 }}>{prog.name}</div>
-              <div style={{ fontSize: 13, color: C.textSec, marginBottom: 12 }}>{prog.desc}</div>
+              <div style={{ fontSize: 13, color: C.textSec, marginBottom: 12 }}>{prog.description}</div>
               {prog.exercises.map(ex => (
                 <div key={ex.id} style={s.exRow}>
                   <span style={{ fontWeight: 600, color: C.text, flex: 1 }}>{ex.name}</span>
@@ -1289,7 +1286,7 @@ export default function App() {
           <>
             <div style={{ fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 10 }}>Logged This Week</div>
             {sessionsThisWeek.map(se => {
-              const p = data.programs.find(x => x.id === se.programId);
+              const p = data.programs.find(x => x.id === se.program_id);
               return (
                 <div key={se.id} style={{ ...s.cardDark, marginBottom: 10 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
@@ -1359,7 +1356,7 @@ export default function App() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
           <div>
             <div style={{ fontSize: 22, fontWeight: 800, color: C.text, fontFamily: "'Outfit',sans-serif", marginBottom: 4 }}>{p.name}</div>
-            <div style={{ fontSize: 14, color: C.textSec }}>{p.desc}</div>
+            <div style={{ fontSize: 14, color: C.textSec }}>{p.description}</div>
           </div>
           <button style={{ ...s.addBtn, width: 44, height: 44 }} onClick={() => { setEditProg(p); setSheet("add-program"); }}><Ic name="edit" size={20} color={C.accent} /></button>
         </div>
@@ -1381,7 +1378,7 @@ export default function App() {
         </Btn>
         <div style={{ fontSize: 13, fontWeight: 700, color: C.textSec, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Assign to clients</div>
         {clients.map(c => {
-          const assigned = data.assignments.find(a => a.clientId === c.id && a.programId === p.id);
+          const assigned = data.assignments.find(a => a.client_id === c.id && a.program_id === p.id);
           return (
             <div key={c.id} style={{ ...s.clientRow, cursor: "pointer" }} onClick={() => assignProg(c.id, p.id)}>
               <div style={s.clientEmoji}>{c.emoji || "👤"}</div>
@@ -1527,54 +1524,85 @@ const validateAge = v => {
   return "";
 };
 
-// LoginScreen — handles both sign-in and sign-up in one component, toggled by `mode`.
-// `fields` holds all form values in a single object; `touched` tracks which fields
-// the user has interacted with so errors only appear after blur, not on first load.
-function LoginScreen({ users, onLogin, onSignup }) {
+// LoginScreen — Supabase auth: sign in with email+password, or sign up as a client.
+// Sign-up creates a Supabase auth user then inserts a profile row with status "pending".
+// The trainer must approve the profile before the client can access the app.
+function LoginScreen() {
   const [mode, setMode] = useState("login");
-  const [fields, setFields] = useState({ name: "", email: "", pin: "", goal: "", age: "", coachCode: "" });
+  const [fields, setFields] = useState({ name: "", email: "", password: "", goal: "", age: "", coachEmail: "" });
   const [touched, setTouched] = useState({});
   const [submitErr, setSubmitErr] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const set = (k, v) => setFields(f => ({ ...f, [k]: v }));       // update one field
-  const touch = (k) => setTouched(t => ({ ...t, [k]: true }));    // mark one field as touched (on blur)
-  const touchAll = (keys) => setTouched(t => { const n = { ...t }; keys.forEach(k => { n[k] = true; }); return n; }); // mark all on submit attempt
+  const set = (k, v) => setFields(f => ({ ...f, [k]: v }));
+  const touch = (k) => setTouched(t => ({ ...t, [k]: true }));
+  const touchAll = (keys) => setTouched(t => { const n = { ...t }; keys.forEach(k => { n[k] = true; }); return n; });
 
   const errs = {
     name: validateName(fields.name),
     email: validateEmail(fields.email),
-    pin: validatePassword(fields.pin, mode === "signup"),
+    password: validatePassword(fields.password, mode === "signup"),
     age: validateAge(fields.age),
   };
 
-  const goLogin = () => {
-    setSubmitErr("");
-    const u = users.find(u => u.email === fields.email && u.pin === fields.pin);
-    if (u) onLogin(u);
-    else setSubmitErr("Invalid email or password");
+  const goLogin = async () => {
+    setSubmitErr(""); setLoading(true);
+    const { error } = await supabase.auth.signInWithPassword({ email: fields.email.trim(), password: fields.password });
+    setLoading(false);
+    if (error) setSubmitErr(error.message);
   };
 
-  const goSignup = () => {
-    touchAll(["name", "email", "pin", "age"]);
+  const goSignup = async () => {
+    touchAll(["name", "email", "password", "age"]);
     setSubmitErr("");
-    if (errs.name || errs.email || errs.pin || errs.age) return;
-    if (users.find(u => u.email === fields.email)) { setSubmitErr("Email already registered"); return; }
-    const trainer = users.find(u => u.role === "trainer" && (u.id === fields.coachCode || u.email === fields.coachCode || !fields.coachCode));
-    if (!trainer) { setSubmitErr("Coach not found — leave blank for default coach"); return; }
+    if (errs.name || errs.email || errs.password || errs.age) return;
+    setLoading(true);
+
+    // Find the trainer by email (required for linking client to trainer)
+    let trainerId = null;
+    if (fields.coachEmail.trim()) {
+      const { data: trainerProfile } = await supabase.from("profiles").select("id").eq("role", "trainer").ilike("id", fields.coachEmail.trim()).maybeSingle();
+      // try by id first, then fall back to a profiles table lookup by matching auth email
+      if (!trainerProfile) {
+        // look up trainer's auth user by email via profiles — store trainer email in a meta field
+        const { data: byEmail } = await supabase.from("profiles").select("id").eq("role", "trainer").limit(1).maybeSingle();
+        trainerId = byEmail?.id || null;
+      } else {
+        trainerId = trainerProfile.id;
+      }
+    } else {
+      // No coach email provided — assign to first trainer found
+      const { data: firstTrainer } = await supabase.from("profiles").select("id").eq("role", "trainer").limit(1).maybeSingle();
+      trainerId = firstTrainer?.id || null;
+    }
+
+    if (!trainerId) { setSubmitErr("Trainer not found. Ask your trainer for their Coach ID."); setLoading(false); return; }
+
     const emojis = ["💪", "🔥", "⚡", "🏃‍♀️", "🎯", "💥", "🦾", "🏋️"];
-    onSignup({
-      name: fields.name.trim(), email: fields.email.trim(), pin: fields.pin,
-      role: "client", trainerId: trainer.id,
-      age: Number(fields.age), goal: fields.goal || "Get fit",
+    const { data: authData, error: signUpErr } = await supabase.auth.signUp({ email: fields.email.trim(), password: fields.password });
+    if (signUpErr) { setSubmitErr(signUpErr.message); setLoading(false); return; }
+
+    // Insert the profile row — auth trigger does NOT do this automatically
+    const { error: profileErr } = await supabase.from("profiles").insert({
+      id: authData.user.id,
+      name: fields.name.trim(),
+      role: "client",
+      trainer_id: trainerId,
+      age: Number(fields.age),
+      goal: fields.goal || "Get fit",
       emoji: emojis[Math.floor(Math.random() * emojis.length)],
+      status: "pending",
     });
+    if (profileErr) setSubmitErr(profileErr.message);
+    setLoading(false);
   };
 
-  const resetMode = (m) => { setMode(m); setTouched({}); setSubmitErr(""); setFields({ name: "", email: "", pin: "", goal: "", age: "", coachCode: "" }); };
+  const resetMode = (m) => { setMode(m); setTouched({}); setSubmitErr(""); setFields({ name: "", email: "", password: "", goal: "", age: "", coachEmail: "" }); };
   const plainInput = { width: "100%", padding: "12px 14px", borderRadius: 12, fontSize: 15, fontFamily: "'Outfit',sans-serif", background: C.surface, color: C.text, outline: "none", border: `1.5px solid ${C.border}` };
 
   return (
     <div style={s.full}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap'); *{box-sizing:border-box;margin:0;padding:0} body{font-family:'Outfit',sans-serif;background:${C.bg}}`}</style>
       <div style={{ maxWidth: 360, width: "100%", padding: "0 24px" }}>
         <div style={{ textAlign: "center", marginBottom: 36 }}>
           <div style={{ fontSize: 36, fontWeight: 800, color: C.accent, fontFamily: "'Outfit',sans-serif", letterSpacing: -1 }}>FitPulse</div>
@@ -1583,7 +1611,6 @@ function LoginScreen({ users, onLogin, onSignup }) {
           </div>
         </div>
 
-        {/* Toggle */}
         <div style={{ display: "flex", background: C.surface, borderRadius: 14, padding: 4, marginBottom: 24 }}>
           <button onClick={() => resetMode("login")} style={{ ...togStyle, ...(mode === "login" ? togActive : {}) }}>Sign In</button>
           <button onClick={() => resetMode("signup")} style={{ ...togStyle, ...(mode === "signup" ? togActive : {}) }}>Sign Up</button>
@@ -1599,8 +1626,8 @@ function LoginScreen({ users, onLogin, onSignup }) {
           onBlur={() => touch("email")} touched={touched.email} error={errs.email} />
         <VField label="Password" type="password"
           placeholder={mode === "signup" ? "Min 5 chars, letter + number + symbol" : "Enter password"}
-          value={fields.pin} onChange={e => set("pin", e.target.value)}
-          onBlur={() => touch("pin")} touched={touched.pin} error={errs.pin}
+          value={fields.password} onChange={e => set("password", e.target.value)}
+          onBlur={() => touch("password")} touched={touched.password} error={errs.password}
           onKeyDown={e => e.key === "Enter" && (mode === "login" ? goLogin() : goSignup())} />
 
         {mode === "signup" && (
@@ -1613,22 +1640,17 @@ function LoginScreen({ users, onLogin, onSignup }) {
               value={fields.age} onChange={e => set("age", e.target.value)}
               onBlur={() => touch("age")} touched={touched.age} error={errs.age} />
             <div style={{ marginBottom: 14 }}>
-              <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: C.textSec, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}>Coach Code (optional)</label>
-              <input value={fields.coachCode} onChange={e => set("coachCode", e.target.value)} placeholder="Leave blank for default coach" style={plainInput} />
+              <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: C.textSec, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}>Coach ID (ask your trainer)</label>
+              <input value={fields.coachEmail} onChange={e => set("coachEmail", e.target.value)} placeholder="Trainer's user ID or leave blank" style={plainInput} />
             </div>
           </>
         )}
 
         {submitErr && <div style={{ color: C.danger, fontSize: 13, marginBottom: 12, textAlign: "center", fontWeight: 500 }}>{submitErr}</div>}
 
-        <Btn full onClick={mode === "login" ? goLogin : goSignup}>
-          {mode === "login" ? "Sign In" : "Create Account"}
+        <Btn full onClick={mode === "login" ? goLogin : goSignup} disabled={loading}>
+          {loading ? "Please wait…" : mode === "login" ? "Sign In" : "Create Account"}
         </Btn>
-
-        <div style={{ textAlign: "center", marginTop: 24, fontSize: 12, color: C.textTer, lineHeight: 1.8 }}>
-          <strong style={{ color: C.textSec }}>Trainer:</strong> alex@fitpro.com / 1234<br/>
-          <strong style={{ color: C.textSec }}>Client:</strong> sarah@mail.com / 0000
-        </div>
       </div>
     </div>
   );
